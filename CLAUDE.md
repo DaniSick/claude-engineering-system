@@ -7,7 +7,7 @@ This repository IS the engineering system for Claude Code. It tracks configurati
 - `global/` — source of truth for `~/.claude/` user-level configuration
 - `agents/` — specialized agent definitions (deploy to `~/.claude/agents/`)
 - `hooks/` — hook scripts (deploy via `scripts/setup.sh`)
-- `docs/` — audit findings, architecture decisions, usage guides
+- `docs/` — architecture decisions, usage guides, evaluation scenarios
 - `scripts/setup.sh` — deploy all config to `~/.claude/`
 
 ## Working in this repo
@@ -43,5 +43,5 @@ This repo provides the **global** layer only. Individual projects should have th
 
 ## Current system status
 
-See `docs/audit-baseline.md` for the initial state audit.
 See `docs/architecture.md` for design decisions.
+See `docs/eval-scenarios.md` for reproducible evaluation scenarios.

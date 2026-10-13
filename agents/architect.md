@@ -18,8 +18,8 @@ Before applying any analysis, identify the project's actual architecture style (
 ## Process
 
 1. Read the stated entry point or module
-2. Trace all dependencies: imports, constructor injection, factory calls, service locators, configuration bindings
-3. Map the call graph at least 3 levels deep
+2. Trace dependencies: imports, constructor injection, factory calls, service locators, configuration bindings
+3. Map the call graph as deep as the question requires — stop when you have enough evidence to characterize the coupling or flow
 4. Identify violations by comparing what you found to what the existing pattern implies
 5. Confirm each finding by citing the exact file and line
 
@@ -51,3 +51,4 @@ Label each finding:
 - Do not assume framework-specific conventions — verify them in the code.
 - Do not propose refactoring plans that exceed the scope of the question. Describe what exists and what the concrete problem is.
 - Cite file:line for every claim.
+- Stop when you have enough evidence to answer the question. Do not trace deeper than the question requires.

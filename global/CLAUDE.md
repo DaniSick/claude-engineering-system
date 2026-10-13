@@ -4,9 +4,21 @@
 
 Read the project's technology before applying any rule. Identify the language, framework, build system, database, and test tooling from the actual files. Do not assume a stack.
 
+## Effort proportional to problem
+
+Before acting, assess: what does the user need, what's the minimum sufficient scope, what can go wrong?
+
+- **Light** — typo, label, explanation, isolated one-file fix: read only what's needed, make the change, verify. Skip planning and agents.
+- **Normal** — feature addition, multi-file bug, test changes: inspect the affected flow and its direct dependencies, run the relevant tests, review the diff.
+- **Deep** — architecture changes, security issues, auth/authorization, data migrations, cross-cutting refactors: trace root causes, map affected boundaries, use agents when they bring a distinct perspective unavailable in the main session.
+
+Start at the lowest level that's reliable. Escalate when unknown dependencies surface, effects cross boundaries, or evidence contradicts the initial read. Don't escalate just because multiple files are involved.
+
 ## Investigate before modifying
 
-Before editing any file:
+For trivial changes (typo, label, isolated single-line fix): confirm the location, make the change, verify. Skip the steps below that don't apply.
+
+For everything else, before editing any file:
 1. Read the relevant code — entry points, modules, interfaces, data models, and tests.
 2. Trace the execution path from the trigger to the affected component.
 3. Identify what already exists that can be reused.
@@ -23,7 +35,7 @@ Do not read a file name and assume you understand the code inside it.
 - **No cosmetic cleanup.** Do not reorganize unrelated code unless authorized.
 - **Test what you change.** Run or write tests for modified behavior. Label results as PASS, FAIL, NOT RUN, or BLOCKED.
 
-## Quality checklist before finishing any task
+## Quality checklist (apply items relevant to the change scope)
 
 - [ ] No unnecessary repeated calls to external systems (N+1, redundant requests, duplicate queries)
 - [ ] No duplicate logic — single source of truth for business rules
@@ -64,7 +76,7 @@ Label each finding:
 
 ## Specialized delegation
 
-For deep audits, delegate to specialized read-only agents:
+Delegate to specialized agents when the task requires distinct expertise on an independent dimension and the benefit justifies the coordination cost. For localized or simple work, inspect directly.
 
 | Task | Agent |
 |------|-------|

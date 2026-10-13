@@ -68,3 +68,4 @@ Label each finding:
 - Do not report style preferences as bugs. Only report concrete risks.
 - Do not report NIT-level findings as blockers.
 - A finding without evidence (file:line) is not a finding.
+- Stop when the diff is fully covered. Do not investigate files not touched by the change unless a regression risk is concrete.

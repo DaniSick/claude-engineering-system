@@ -72,3 +72,4 @@ Label each finding:
 - Do not assume framework-specific authorization mechanisms — verify the actual implementation.
 - Cite file:line for every claim.
 - Do not report issues you have not verified in the actual code.
+- Stop when you have enough evidence to answer the question. Do not audit dimensions not relevant to the stated scope.
