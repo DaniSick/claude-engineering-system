@@ -164,14 +164,17 @@ echo
 
 log "4. Hooks  (${CLAUDE_DIR}/hooks/)"
 hook_count=0
-for src in "${REPO_DIR}/hooks/"*.sh; do
+[[ "$VERIFY_ONLY" == "false" ]] && mkdir -p "${CLAUDE_DIR}/hooks"
+for src in "${REPO_DIR}/hooks/"*.sh "${REPO_DIR}/hooks/"*.py; do
     [[ -f "$src" ]] || continue
     hook_count=$((hook_count + 1))
     filename="$(basename "$src")"
     deploy_file "$src" "${CLAUDE_DIR}/hooks/${filename}" "hooks"
-    [[ "$VERIFY_ONLY" == "false" ]] && chmod +x "${CLAUDE_DIR}/hooks/${filename}"
+    if [[ "$VERIFY_ONLY" == "false" && "$src" == *.sh ]]; then
+        chmod +x "${CLAUDE_DIR}/hooks/${filename}"
+    fi
 done
-[[ $hook_count -eq 0 ]] && log "  (no hook scripts to deploy — see hooks/README.md)"
+[[ $hook_count -eq 0 ]] && log "  (no hook scripts found in hooks/)"
 echo
 
 # ── 5. settings.json — safe merge ────────────────────────────────────────────
@@ -180,7 +183,7 @@ echo
 # Adds entries present in the reference; removes entries present in the reference
 # that were previously managed (tracked in manifest). Does NOT remove manual entries.
 
-log "5. settings.json  (permissions.allow merge)"
+log "5. settings.json  (permissions + hooks merge)"
 
 SETTINGS="${CLAUDE_DIR}/settings.json"
 REF_SETTINGS="${REPO_DIR}/global/settings.json"
@@ -192,15 +195,36 @@ try:
     with open(sys.argv[1]) as f: current = json.load(f)
 except: current = {}
 with open(sys.argv[2]) as f: ref = json.load(f)
+
+# Check permissions
 cur_allow = set(current.get("permissions", {}).get("allow", []))
 ref_allow = set(ref.get("permissions", {}).get("allow", []))
 missing = ref_allow - cur_allow
-extra   = cur_allow - ref_allow
-if not missing and not extra:
+if not missing:
     print("[setup]   OK: permissions.allow matches reference")
 else:
-    if missing: print(f"[setup]   MISSING from allow: {sorted(missing)}")
-    if extra:   print(f"[setup]   EXTRA in allow (manual or old): {sorted(extra)}")
+    print(f"[setup]   MISSING from allow: {sorted(missing)}")
+
+# Check hooks
+ref_hooks = ref.get("hooks", {})
+if ref_hooks:
+    existing_cmds = set()
+    for groups in current.get("hooks", {}).values():
+        for g in groups:
+            for h in g.get("hooks", []):
+                existing_cmds.add(h.get("command", ""))
+    missing_hooks = [
+        h.get("command", "")
+        for groups in ref_hooks.values()
+        for g in groups
+        for h in g.get("hooks", [])
+        if h.get("command", "") not in existing_cmds
+    ]
+    if not missing_hooks:
+        print("[setup]   OK: hooks config present")
+    else:
+        for cmd in missing_hooks:
+            print(f"[setup]   MISSING hook: {cmd}")
 PY
 else
     python3 - "$SETTINGS" "$REF_SETTINGS" "$BACKUP_DIR" "$TIMESTAMP" <<'PY'
@@ -217,34 +241,71 @@ except (FileNotFoundError, json.JSONDecodeError):
 with open(ref_path) as f:
     ref = json.load(f)
 
+changed = False
+
+# ── Merge permissions.allow (additive) ───────────────────────────────────────
 ref_allow = set(ref.get("permissions", {}).get("allow", []))
 cur_allow = set(settings.get("permissions", {}).get("allow", []))
-
-# Additive merge: add ref entries, never remove manual entries
 merged = sorted(cur_allow | ref_allow)
-added = ref_allow - cur_allow
+added_perms = ref_allow - cur_allow
+if added_perms:
+    if "permissions" not in settings:
+        settings["permissions"] = {}
+    settings["permissions"]["allow"] = merged
+    changed = True
 
-if not added:
-    print("[setup]   unchanged: settings.json permissions")
+# ── Merge hooks (additive: add missing hooks, never remove) ──────────────────
+ref_hooks = ref.get("hooks", {})
+added_hooks = []
+if ref_hooks:
+    existing_cmds = set()
+    cur_hooks = settings.get("hooks", {})
+    for groups in cur_hooks.values():
+        for g in groups:
+            for h in g.get("hooks", []):
+                existing_cmds.add(h.get("command", ""))
+
+    for event, ref_groups in ref_hooks.items():
+        if event not in cur_hooks:
+            cur_hooks[event] = []
+        for ref_group in ref_groups:
+            new_hooks = [
+                h for h in ref_group.get("hooks", [])
+                if h.get("command", "") not in existing_cmds
+            ]
+            if new_hooks:
+                entry = dict(ref_group)
+                entry["hooks"] = new_hooks
+                cur_hooks[event].append(entry)
+                for h in new_hooks:
+                    added_hooks.append(h.get("command", ""))
+                    existing_cmds.add(h.get("command", ""))
+    if added_hooks:
+        settings["hooks"] = cur_hooks
+        changed = True
+
+if not changed:
+    print("[setup]   unchanged: settings.json")
     sys.exit(0)
 
-# Only backup and write if there are actual changes
+# Backup before writing
 bk_dir = os.path.join(backup_dir, "settings")
 os.makedirs(bk_dir, exist_ok=True)
 shutil.copy2(settings_path, os.path.join(bk_dir, f"settings.json.{ts}"))
 print(f"[setup]   backed up → backups/ces/settings/settings.json.{ts}")
 
-if "permissions" not in settings:
-    settings["permissions"] = {}
-settings["permissions"]["allow"] = merged
-
 with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)
     f.write("\n")
 
-print(f"[setup]   added {len(added)} permissions, total {len(merged)}")
-for p in sorted(added):
-    print(f"[setup]     + {p}")
+if added_perms:
+    print(f"[setup]   added {len(added_perms)} permission(s), total {len(merged)}")
+    for p in sorted(added_perms):
+        print(f"[setup]     + {p}")
+if added_hooks:
+    print(f"[setup]   added {len(added_hooks)} hook(s)")
+    for h in added_hooks:
+        print(f"[setup]     + {h}")
 PY
 fi
 echo
