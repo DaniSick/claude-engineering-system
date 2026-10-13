@@ -2,7 +2,22 @@
 
 ## [Unreleased]
 
-### Added
+### Added (2026-10-13)
+- **Advanced security engineering system** — orchestrator + 6 domain specialists + `/sec-audit` skill:
+  - `agents/security.md` (rewritten as orchestrator): scope assessment, specialist selection table, direct analysis for narrow scope, coverage matrix format
+  - `agents/security-auth.md`: authentication flows, session management, JWT/OAuth, IDOR/BOLA, mass assignment, multi-tenancy
+  - `agents/security-injection.md`: SQL/NoSQL/command injection, XSS (all contexts), SSRF, path traversal, deserialization, dynamic eval
+  - `agents/security-web.md`: CSRF, CORS, CSP, security headers, rate limiting, API exposure, GraphQL, WebSocket, caching
+  - `agents/security-data.md`: file upload/download, hardcoded secrets, crypto configuration, TLS, sensitive data in logs/exports
+  - `agents/security-logic.md`: business logic flaws, state machine violations, race conditions/TOCTOU, resource exhaustion, compound chains
+  - `agents/security-deps.md`: package CVEs (with explicit training-cutoff limitation), abandoned packages, lockfile integrity, supply chain
+  - `.claude/commands/sec-audit.md`: full audit orchestration — assess → select specialists → parallel execution → compound analysis → report with coverage matrix
+  - `docs/sec-fixture.py`: synthetic vulnerable Python file (SQLi, hardcoded secret, missing auth/IDOR, command injection) for verifying analysis quality
+- **UI/UX engineering capability**:
+  - `.claude/commands/ui-review.md`: structured audit skill (inspect visual system → identify with evidence → implement → validate)
+  - `global/CLAUDE.md`: compact UI/UX section (~8 lines) with visual system principles
+- **Adaptive effort policy**: three levels (light/normal/deep) in `global/CLAUDE.md`
+- **Response modes** (ferb/explained/auto): in `global/CLAUDE.md`; `/mode` skill to switch within session
 - `hooks/secret-scan.py`: PreToolUse hook that warns before `git commit` if the staged diff contains credential-like patterns. Non-blocking.
 - `global/settings.json`: hooks configuration for `secret-scan.py`.
 - `scripts/setup.sh`: hook deployment for `.py` and `.sh` files; additive merge of `hooks` section in `settings.json`.
