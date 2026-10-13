@@ -1,3 +1,7 @@
+---
+description: Behavior-preserving refactor checklist. Baseline tests, incremental steps, contract verification, reviewer pass.
+---
+
 # Safe Refactor
 
 Structured workflow for refactoring code without breaking behavior.

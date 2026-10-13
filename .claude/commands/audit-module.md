@@ -1,3 +1,7 @@
+---
+description: Structured multi-agent audit of a module (architecture + security + performance). Argument: path or module name.
+---
+
 # Module Audit
 
 Perform a structured audit of a specific module or directory.

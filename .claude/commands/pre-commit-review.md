@@ -1,3 +1,7 @@
+---
+description: Review the staged diff before committing. Runs quick checks and delegates to @reviewer.
+---
+
 # Pre-Commit Review
 
 Review the current staged diff before committing. Delegates to @reviewer for a systematic check.

@@ -1,113 +1,202 @@
 # Claude Engineering System
 
-A personal, reusable engineering system for Claude Code. Version-controlled configuration that loads personal principles in every session, enables specialized agent delegation, and provides structured workflows for common engineering tasks.
+Sistema personal de ingeniería de software para Claude Code. Una única fuente versionada que despliega configuración global en `~/.claude/` para que esté disponible en todos los proyectos.
 
-## What this is
+## Componentes desplegados
 
-Not a collection of prompts — a **deployable engineering system** that makes Claude Code:
-- Investigate before modifying
-- Detect the project's technology before applying rules
-- Delegate deep audits to specialized read-only agents
-- Follow structured workflows for bugs, refactors, and code review
-- Commit less noise and fewer regressions
+| Componente | Fuente (repo) | Destino global | Estado |
+|-----------|--------------|----------------|--------|
+| Principios globales | `global/CLAUDE.md` | `~/.claude/CLAUDE.md` | ✅ Verificado |
+| Agente architect | `agents/architect.md` | `~/.claude/agents/architect.md` | ✅ Verificado |
+| Agente security | `agents/security.md` | `~/.claude/agents/security.md` | ✅ Verificado |
+| Agente performance | `agents/performance.md` | `~/.claude/agents/performance.md` | ✅ Verificado |
+| Agente reviewer | `agents/reviewer.md` | `~/.claude/agents/reviewer.md` | ✅ Verificado |
+| Permisos globales | `global/settings.json` | `~/.claude/settings.json` (merge) | ✅ Verificado |
+| Comando audit-module | `.claude/commands/audit-module.md` | `~/.claude/commands/audit-module.md` | ⚠️ Pendiente verificación global |
+| Comando investigate-bug | `.claude/commands/investigate-bug.md` | `~/.claude/commands/investigate-bug.md` | ⚠️ Pendiente verificación global |
+| Comando safe-refactor | `.claude/commands/safe-refactor.md` | `~/.claude/commands/safe-refactor.md` | ⚠️ Pendiente verificación global |
+| Comando pre-commit-review | `.claude/commands/pre-commit-review.md` | `~/.claude/commands/pre-commit-review.md` | ⚠️ Pendiente verificación global |
 
-## Structure
+> **Nota sobre commands globales**: `~/.claude/commands/` como ubicación global no está confirmada en la documentación oficial de Claude Code 2.1.87. Los comandos funcionan con certeza desde `.claude/commands/` en el directorio del proyecto. La verificación global requiere abrir una sesión desde otro proyecto y comprobar si aparecen como skills.
+
+## Instalación inicial (WSL2)
+
+```bash
+git clone git@github.com:DaniSick/claude-engineering-system.git ~/claude-engineering-system
+cd ~/claude-engineering-system
+bash scripts/setup.sh
+```
+
+### Verificar el despliegue
+
+```bash
+bash scripts/setup.sh --verify
+```
+
+Salida esperada: todos los archivos en estado `OK`.
+
+### Verificación manual de agents (desde otro proyecto)
+
+1. Abre Claude Code en cualquier otro directorio
+2. Escribe `@architect` — debe responder como analista de arquitectura
+3. Si no responde, los agentes están ausentes o hay un problema de carga
+
+### Verificación manual de commands globales (pendiente)
+
+1. Abre Claude Code en un directorio **diferente** a este repositorio
+2. Escribe `/audit-module` — si aparece como skill disponible, `~/.claude/commands/` funciona globalmente
+3. Si no aparece, los commands solo funcionan desde este repositorio
+
+## Actualización desde GitHub
+
+```bash
+cd ~/claude-engineering-system
+git pull
+# Revisar cambios recibidos antes de desplegar:
+git log --oneline -5
+git diff HEAD~1
+# Desplegar si los cambios son correctos:
+bash scripts/setup.sh
+```
+
+> El instalador no hace `git pull` automáticamente. Revisa siempre los cambios antes de desplegar.
+
+## Reinstalación segura
+
+```bash
+bash scripts/setup.sh
+```
+
+El instalador es idempotente: omite archivos sin cambios, hace backup antes de sobrescribir y nunca elimina archivos globales sin ser explícito.
+
+## Backups y restauración
+
+Los backups se almacenan en `~/.claude/backups/ces/` con timestamp:
+
+```
+~/.claude/backups/ces/
+├── root/           # CLAUDE.md backups
+├── agents/         # agent file backups
+├── commands/       # command file backups
+├── settings/       # settings.json backups
+└── manifest.json   # archivos gestionados por este sistema
+```
+
+Para restaurar un archivo específico:
+
+```bash
+# Ejemplo: restaurar CLAUDE.md desde el backup más reciente
+ls ~/.claude/backups/ces/root/
+cp ~/.claude/backups/ces/root/CLAUDE.md.20261013_102327 ~/.claude/CLAUDE.md
+```
+
+## Estructura del repositorio
 
 ```
 .
-├── global/                  # Deploys to ~/.claude/ (loaded in every session)
-│   ├── CLAUDE.md            # Personal engineering principles
-│   └── settings.json        # Permissions reference (read-only global allowlist)
-├── agents/                  # Read-only specialized agents → ~/.claude/agents/
-│   ├── architect.md         # Architecture and dependency analysis
-│   ├── security.md          # Security audit (auth, injection, exposure, secrets)
-│   ├── performance.md       # Redundant queries, missing indexes, cache misses
-│   └── reviewer.md          # Pre-commit change review
+├── global/                    # → ~/.claude/
+│   ├── CLAUDE.md              # principios globales de ingeniería
+│   └── settings.json          # referencia de permisos (merge aditivo)
+├── agents/                    # → ~/.claude/agents/
+│   ├── architect.md           # análisis de arquitectura (solo lectura)
+│   ├── security.md            # auditoría de seguridad (solo lectura)
+│   ├── performance.md         # análisis de rendimiento (solo lectura)
+│   └── reviewer.md            # revisión de cambios (solo lectura)
 ├── templates/
-│   └── project-CLAUDE.md   # Generic project context template (copy to project root)
+│   └── project-CLAUDE.md      # plantilla genérica para proyectos
 ├── hooks/
-│   └── README.md            # Hook design and WSL2 notes (not yet deployed)
+│   └── README.md              # diseño de hooks (pendiente WSL2)
 ├── docs/
-│   ├── audit-baseline.md    # Initial system state audit
-│   ├── architecture.md      # Design rationale
-│   └── agents-inventory.md  # Agent usage guide
+│   ├── audit-baseline.md      # auditoría del estado inicial
+│   ├── architecture.md        # decisiones de diseño
+│   └── agents-inventory.md    # guía de uso de agentes
 ├── scripts/
-│   └── setup.sh             # Deploy global/ and agents/ to ~/.claude/
+│   └── setup.sh               # instalador idempotente
 └── .claude/
-    ├── settings.json        # Project-level permissions for this repo
-    └── commands/            # Reusable workflow commands for Claude sessions
+    ├── settings.json          # permisos del proyecto (este repo)
+    └── commands/              # → ~/.claude/commands/ (y uso local)
         ├── audit-module.md
         ├── investigate-bug.md
         ├── safe-refactor.md
         └── pre-commit-review.md
 ```
 
-## Setup
+## Uso de agentes
 
-```bash
-# Clone and deploy global config to ~/.claude/
-git clone https://github.com/DaniSick/claude-engineering-system.git ~/claude-engineering-system
-cd ~/claude-engineering-system
-bash scripts/setup.sh
+Disponibles en cualquier sesión de Claude Code:
 
-# Verify
-ls ~/.claude/CLAUDE.md ~/.claude/agents/
+```
+@architect analiza la estructura de módulos en src/
+@security revisa el directorio de autenticación
+@performance encuentra queries redundantes en la capa de acceso a datos
+@reviewer revisa el diff actual antes de hacer commit
 ```
 
-## Update after changes
+## Uso de comandos/skills
 
-```bash
-bash scripts/setup.sh   # re-deploys CLAUDE.md, agents, permissions
+**Desde este repositorio** (confirmado):
+```
+/audit-module
+/investigate-bug
+/safe-refactor
+/pre-commit-review
 ```
 
-## Requirements
+**Desde otros proyectos** (pendiente verificación global — ver nota arriba).
+
+## Configurar un proyecto
+
+Copia la plantilla a la raíz del proyecto y completa las secciones:
+
+```bash
+cp ~/claude-engineering-system/templates/project-CLAUDE.md ~/mi-proyecto/CLAUDE.md
+```
+
+Los principios globales se cargan automáticamente. El `CLAUDE.md` del proyecto agrega contexto local (stack, arquitectura, restricciones).
+
+## Añadir nuevas capacidades
+
+| Capacidad | Ubicación en el repo | Acción |
+|-----------|---------------------|--------|
+| Nuevo agente global | `agents/<nombre>.md` | Añadir frontmatter `name:` y `description:`, ejecutar `setup.sh` |
+| Nuevo comando | `.claude/commands/<nombre>.md` | Añadir frontmatter `description:`, ejecutar `setup.sh` |
+| Nuevo permiso global | `global/settings.json` → `permissions.allow` | Ejecutar `setup.sh` (merge aditivo) |
+| Nuevo hook | `hooks/<nombre>.sh` | Implementar, probar en WSL2, ejecutar `setup.sh` |
+
+## Diagnóstico
+
+**Agente no detectado:**
+```bash
+ls ~/.claude/agents/
+bash scripts/setup.sh --verify
+```
+
+**Skill/comando no aparece:**
+- Desde este repositorio: el comando debe aparecer con `/nombre`
+- Desde otro repositorio: `~/.claude/commands/` puede no estar soportado en 2.1.87
+
+**settings.json corrompido:**
+```bash
+python3 -m json.tool ~/.claude/settings.json
+# Si falla, restaurar desde backup:
+ls ~/.claude/backups/ces/settings/
+cp ~/.claude/backups/ces/settings/settings.json.<timestamp> ~/.claude/settings.json
+```
+
+**Ejecutar setup.sh desde cualquier directorio:**
+```bash
+bash ~/claude-engineering-system/scripts/setup.sh
+```
+
+## Limitaciones conocidas
+
+- `~/.claude/commands/` como ubicación global: **no verificado** en Claude Code 2.1.87
+- Hooks: no desplegados — el comportamiento en WSL2 (binario Windows) está sin confirmar
+- Skills del marketplace (`~/.claude/skills/synced/`): sincronizadas por Claude Code, no gestionadas por este sistema
+- Los backups de settings se hacen solo cuando hay cambios reales en `permissions.allow`
+
+## Requisitos
 
 - Claude Code >= 2.1.87
 - Linux / macOS / WSL2
-- `bash`, `git`, `python3`
-
-## Using agents
-
-In any Claude Code session:
-
-```
-@architect analyze the module structure in [path]
-@security review [auth or sensitive directory]
-@performance find redundant queries in [data access layer]
-@reviewer check the current diff
-```
-
-## Using workflow commands
-
-This repo's `.claude/commands/` directory provides structured workflows. In sessions started from this directory, use:
-
-```
-/audit-module       — structured multi-agent module audit
-/investigate-bug    — root cause analysis workflow
-/safe-refactor      — behavior-preserving refactor checklist
-/pre-commit-review  — staged diff review before committing
-```
-
-## Setting up a project
-
-Copy `templates/project-CLAUDE.md` to your project root as `CLAUDE.md` and fill in the sections. This gives Claude Code project-specific context (stack, architecture, constraints) without duplicating global principles.
-
-```bash
-cp ~/claude-engineering-system/templates/project-CLAUDE.md ~/your-project/CLAUDE.md
-```
-
-## Maintenance
-
-| Task | Action |
-|------|--------|
-| Update global principles | Edit `global/CLAUDE.md`, run `bash scripts/setup.sh` |
-| Add/update agent | Edit `agents/<name>.md`, run `bash scripts/setup.sh` |
-| Add workflow command | Add `.claude/commands/<name>.md` (no deploy needed) |
-| Add project-level permissions | Edit `<project>/.claude/settings.json` |
-| Restore previous global config | `cp ~/.claude/CLAUDE.md.backup.<timestamp> ~/.claude/CLAUDE.md` |
-
-## Design
-
-See `docs/architecture.md` for layer design and decision rationale.
-See `docs/agents-inventory.md` for agent usage guide.
-See `hooks/README.md` for hook design (pending WSL2 validation).
+- `bash`, `git`, `python3`, `sha256sum`

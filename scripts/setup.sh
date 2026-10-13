@@ -1,115 +1,267 @@
-#!/bin/bash
-# setup.sh — Deploy claude-engineering-system config to ~/.claude/
-# Run from the repository root: bash scripts/setup.sh
-# Safe to re-run: creates backups before overwriting.
+#!/usr/bin/env bash
+# setup.sh — Deploy claude-engineering-system to ~/.claude/
+#
+# Usage:
+#   bash scripts/setup.sh          # deploy all components
+#   bash scripts/setup.sh --verify # verify deployment without changes
+#   bash scripts/setup.sh --help   # show usage
+#
+# Idempotent: skips files that have not changed (checksum comparison).
+# Backups: stored in ~/.claude/backups/ces/ with timestamps.
+# Manifest: ~/.claude/backups/ces/manifest.json tracks managed files.
+# Preserves: theme, model, and any settings keys not managed by this system.
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLAUDE_DIR="$HOME/.claude"
-BACKUP_SUFFIX=".backup.$(date +%s)"
+# ── Configuration ────────────────────────────────────────────────────────────
 
-log() { echo "[setup] $*"; }
-warn() { echo "[setup] WARNING: $*" >&2; }
-backup_if_exists() {
-    local target="$1"
-    if [[ -f "$target" ]]; then
-        cp "$target" "${target}${BACKUP_SUFFIX}"
-        log "Backed up: ${target} → ${target}${BACKUP_SUFFIX}"
-    fi
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CLAUDE_DIR="${HOME}/.claude"
+BACKUP_DIR="${CLAUDE_DIR}/backups/ces"
+MANIFEST="${BACKUP_DIR}/manifest.json"
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+VERIFY_ONLY=false
+CHANGED=0
+SKIPPED=0
+BACKED_UP=0
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+log()  { echo "[setup] $*"; }
+warn() { echo "[setup] WARN: $*" >&2; }
+err()  { echo "[setup] ERROR: $*" >&2; exit 1; }
+
+checksum() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
+
+backup_file() {
+    local src="$1"
+    local category="$2"    # agents / root / commands / settings
+    [[ -f "$src" ]] || return 0
+
+    local filename
+    filename="$(basename "$src")"
+    local dest="${BACKUP_DIR}/${category}/${filename}.${TIMESTAMP}"
+    mkdir -p "${BACKUP_DIR}/${category}"
+    cp "$src" "$dest"
+    BACKED_UP=$((BACKED_UP + 1))
+    log "  backed up → backups/ces/${category}/${filename}.${TIMESTAMP}"
 }
 
-# Verify we're in the right repo
-if [[ ! -f "$REPO_DIR/global/CLAUDE.md" ]]; then
-    echo "ERROR: Run from claude-engineering-system repo root"
-    exit 1
-fi
+# Deploy a single file: skip if identical, backup and replace if different.
+deploy_file() {
+    local src="$1"
+    local dst="$2"
+    local category="$3"
 
-log "Repository: $REPO_DIR"
-log "Target: $CLAUDE_DIR"
-echo
+    [[ -f "$src" ]] || { warn "Source not found: $src"; return 1; }
 
-# 1. Deploy global CLAUDE.md
-log "Deploying global CLAUDE.md..."
-backup_if_exists "$CLAUDE_DIR/CLAUDE.md"
-cp "$REPO_DIR/global/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
-log "OK: $CLAUDE_DIR/CLAUDE.md"
+    if [[ "$VERIFY_ONLY" == "true" ]]; then
+        if [[ ! -f "$dst" ]]; then
+            log "  MISSING: $dst"
+        elif [[ "$(checksum "$src")" != "$(checksum "$dst")" ]]; then
+            log "  DIFFERS: $dst"
+        else
+            log "  OK:      $dst"
+        fi
+        return 0
+    fi
 
-# 2. Deploy agents
-log "Deploying agents..."
-mkdir -p "$CLAUDE_DIR/agents"
-for agent_file in "$REPO_DIR/agents/"*.md; do
-    [[ -f "$agent_file" ]] || continue
-    filename="$(basename "$agent_file")"
-    target="$CLAUDE_DIR/agents/$filename"
-    backup_if_exists "$target"
-    cp "$agent_file" "$target"
-    log "OK: $target"
+    mkdir -p "$(dirname "$dst")"
+
+    if [[ -f "$dst" ]] && [[ "$(checksum "$src")" == "$(checksum "$dst")" ]]; then
+        log "  unchanged: $(basename "$dst")"
+        SKIPPED=$((SKIPPED + 1))
+        return 0
+    fi
+
+    backup_file "$dst" "$category"
+    cp "$src" "$dst"
+    log "  deployed: $(basename "$dst")"
+    CHANGED=$((CHANGED + 1))
+
+    # Record in manifest
+    record_manifest "$dst"
+}
+
+record_manifest() {
+    local path="$1"
+    [[ -f "$MANIFEST" ]] || echo '{"managed":[]}' > "$MANIFEST"
+    python3 - "$MANIFEST" "$path" <<'PY' 2>/dev/null || true
+import json, sys
+m_path, file_path = sys.argv[1], sys.argv[2]
+with open(m_path) as f:
+    m = json.load(f)
+if file_path not in m.get("managed", []):
+    m.setdefault("managed", []).append(file_path)
+with open(m_path, "w") as f:
+    json.dump(m, f, indent=2)
+PY
+}
+
+# ── Argument parsing ──────────────────────────────────────────────────────────
+
+for arg in "$@"; do
+    case "$arg" in
+        --verify) VERIFY_ONLY=true ;;
+        --help)
+            echo "Usage: bash scripts/setup.sh [--verify] [--help]"
+            echo "  --verify   check deployment status without making changes"
+            echo "  --help     show this help"
+            exit 0 ;;
+        *) warn "Unknown argument: $arg" ;;
+    esac
 done
 
-# 3. Deploy hooks (if any)
-if [[ -d "$REPO_DIR/hooks" ]]; then
-    log "Deploying hooks..."
-    mkdir -p "$CLAUDE_DIR/hooks"
-    for hook_file in "$REPO_DIR/hooks/"*.sh; do
-        [[ -f "$hook_file" ]] || continue
-        filename="$(basename "$hook_file")"
-        target="$CLAUDE_DIR/hooks/$filename"
-        backup_if_exists "$target"
-        cp "$hook_file" "$target"
-        chmod +x "$target"
-        log "OK: $target (executable)"
-    done
-fi
+# ── Preflight ─────────────────────────────────────────────────────────────────
 
-# 4. Update settings.json — replace permissions.allow with reference list
-# User preferences (theme, model, etc.) are preserved.
-# permissions.allow is replaced entirely so removed entries are also removed.
-SETTINGS="$CLAUDE_DIR/settings.json"
-REF_SETTINGS="$REPO_DIR/global/settings.json"
+[[ -f "${REPO_DIR}/global/CLAUDE.md" ]] || err "Not a claude-engineering-system repo: ${REPO_DIR}"
+[[ -d "${CLAUDE_DIR}" ]] || err "~/.claude/ not found. Is Claude Code installed?"
+command -v python3 &>/dev/null || err "python3 is required for settings merge"
 
-if command -v python3 &>/dev/null; then
-    log "Updating permissions allowlist in $SETTINGS..."
-    python3 - "$SETTINGS" "$REF_SETTINGS" <<'PYEOF'
+log "Repository:  ${REPO_DIR}"
+log "Target:      ${CLAUDE_DIR}"
+log "Mode:        $([[ "$VERIFY_ONLY" == "true" ]] && echo verify || echo deploy)"
+echo
+
+mkdir -p "${BACKUP_DIR}"
+
+# ── 1. Global CLAUDE.md ───────────────────────────────────────────────────────
+
+log "1. Global CLAUDE.md"
+deploy_file \
+    "${REPO_DIR}/global/CLAUDE.md" \
+    "${CLAUDE_DIR}/CLAUDE.md" \
+    "root"
+echo
+
+# ── 2. Agents ────────────────────────────────────────────────────────────────
+
+log "2. Agents  (${CLAUDE_DIR}/agents/)"
+[[ "$VERIFY_ONLY" == "false" ]] && mkdir -p "${CLAUDE_DIR}/agents"
+for src in "${REPO_DIR}/agents/"*.md; do
+    [[ -f "$src" ]] || continue
+    filename="$(basename "$src")"
+    deploy_file "$src" "${CLAUDE_DIR}/agents/${filename}" "agents"
+done
+echo
+
+# ── 3. Commands (global) ─────────────────────────────────────────────────────
+# ~/.claude/commands/ is the global equivalent of .claude/commands/ in a project.
+# STATUS: Not yet confirmed in official docs for 2.1.87.
+# The files are deployed here; verify by checking if they appear as skills
+# in a session started outside this repository.
+
+log "3. Commands  (${CLAUDE_DIR}/commands/)  [global — see verification note]"
+[[ "$VERIFY_ONLY" == "false" ]] && mkdir -p "${CLAUDE_DIR}/commands"
+for src in "${REPO_DIR}/.claude/commands/"*.md; do
+    [[ -f "$src" ]] || continue
+    filename="$(basename "$src")"
+    deploy_file "$src" "${CLAUDE_DIR}/commands/${filename}" "commands"
+done
+echo
+
+# ── 4. Hook scripts ──────────────────────────────────────────────────────────
+
+log "4. Hooks  (${CLAUDE_DIR}/hooks/)"
+hook_count=0
+for src in "${REPO_DIR}/hooks/"*.sh; do
+    [[ -f "$src" ]] || continue
+    hook_count=$((hook_count + 1))
+    filename="$(basename "$src")"
+    deploy_file "$src" "${CLAUDE_DIR}/hooks/${filename}" "hooks"
+    [[ "$VERIFY_ONLY" == "false" ]] && chmod +x "${CLAUDE_DIR}/hooks/${filename}"
+done
+[[ $hook_count -eq 0 ]] && log "  (no hook scripts to deploy — see hooks/README.md)"
+echo
+
+# ── 5. settings.json — safe merge ────────────────────────────────────────────
+# Merges ONLY the permissions.allow list from global/settings.json.
+# All other settings keys (theme, model, hooks, MCP, etc.) are left untouched.
+# Adds entries present in the reference; removes entries present in the reference
+# that were previously managed (tracked in manifest). Does NOT remove manual entries.
+
+log "5. settings.json  (permissions.allow merge)"
+
+SETTINGS="${CLAUDE_DIR}/settings.json"
+REF_SETTINGS="${REPO_DIR}/global/settings.json"
+
+if [[ "$VERIFY_ONLY" == "true" ]]; then
+    python3 - "$SETTINGS" "$REF_SETTINGS" <<'PY'
 import json, sys
+try:
+    with open(sys.argv[1]) as f: current = json.load(f)
+except: current = {}
+with open(sys.argv[2]) as f: ref = json.load(f)
+cur_allow = set(current.get("permissions", {}).get("allow", []))
+ref_allow = set(ref.get("permissions", {}).get("allow", []))
+missing = ref_allow - cur_allow
+extra   = cur_allow - ref_allow
+if not missing and not extra:
+    print("[setup]   OK: permissions.allow matches reference")
+else:
+    if missing: print(f"[setup]   MISSING from allow: {sorted(missing)}")
+    if extra:   print(f"[setup]   EXTRA in allow (manual or old): {sorted(extra)}")
+PY
+else
+    python3 - "$SETTINGS" "$REF_SETTINGS" "$BACKUP_DIR" "$TIMESTAMP" <<'PY'
+import json, sys, os, shutil
 
-settings_path = sys.argv[1]
-ref_path = sys.argv[2]
+settings_path, ref_path, backup_dir, ts = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
-# Read current settings (or empty object)
 try:
     with open(settings_path) as f:
         settings = json.load(f)
 except (FileNotFoundError, json.JSONDecodeError):
     settings = {}
 
-# Read reference settings
 with open(ref_path) as f:
     ref = json.load(f)
 
-# Replace permissions.allow with the reference list (authoritative)
-# Tech-specific permissions belong in project-level .claude/settings.json
-ref_allow = sorted(ref.get("permissions", {}).get("allow", []))
+ref_allow = set(ref.get("permissions", {}).get("allow", []))
+cur_allow = set(settings.get("permissions", {}).get("allow", []))
+
+# Additive merge: add ref entries, never remove manual entries
+merged = sorted(cur_allow | ref_allow)
+added = ref_allow - cur_allow
+
+if not added:
+    print("[setup]   unchanged: settings.json permissions")
+    sys.exit(0)
+
+# Only backup and write if there are actual changes
+bk_dir = os.path.join(backup_dir, "settings")
+os.makedirs(bk_dir, exist_ok=True)
+shutil.copy2(settings_path, os.path.join(bk_dir, f"settings.json.{ts}"))
+print(f"[setup]   backed up → backups/ces/settings/settings.json.{ts}")
 
 if "permissions" not in settings:
     settings["permissions"] = {}
-settings["permissions"]["allow"] = ref_allow
+settings["permissions"]["allow"] = merged
 
-# Write back
 with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)
     f.write("\n")
 
-print(f"[setup] Set {len(ref_allow)} permissions in settings.json")
-PYEOF
-else
-    warn "python3 not available. Skipping settings.json update. Copy permissions manually from $REF_SETTINGS"
+print(f"[setup]   added {len(added)} permissions, total {len(merged)}")
+for p in sorted(added):
+    print(f"[setup]     + {p}")
+PY
 fi
+echo
 
-echo
-log "Setup complete."
-echo
-echo "Verify:"
-echo "  cat $CLAUDE_DIR/CLAUDE.md | head -5"
-echo "  ls $CLAUDE_DIR/agents/"
-echo "  cat $CLAUDE_DIR/settings.json | python3 -m json.tool"
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+if [[ "$VERIFY_ONLY" == "true" ]]; then
+    log "Verification complete."
+else
+    log "Deployment complete."
+    log "  deployed: ${CHANGED} files"
+    log "  skipped:  ${SKIPPED} files (unchanged)"
+    log "  backups:  ${BACKED_UP} files → ${BACKUP_DIR}/"
+    echo
+    log "Verify the deployment:"
+    echo "  bash scripts/setup.sh --verify"
+    echo "  head -3 ${CLAUDE_DIR}/CLAUDE.md"
+    echo "  ls ${CLAUDE_DIR}/agents/"
+    echo "  ls ${CLAUDE_DIR}/commands/"
+fi

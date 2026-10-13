@@ -1,3 +1,7 @@
+---
+description: Root cause analysis workflow. Argument: bug description or reproduction steps.
+---
+
 # Investigate Bug
 
 Structured root cause analysis for a reported bug or unexpected behavior.
