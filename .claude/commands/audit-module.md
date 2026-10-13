@@ -22,14 +22,16 @@ Use this skill when you need a multi-dimensional pre-change audit: a module is u
    | Module characteristic | Dimensions needed |
    |----------------------|------------------|
    | Data access, external calls, jobs | performance |
-   | Auth, user input, sensitive data | security |
+   | One or two security concerns (auth only, injection only) | security |
+   | Multiple security surfaces (auth + input + file/logic) | sec-audit |
    | Multiple layers, circular deps, coupling | architecture |
    | Pre-change audit of an unfamiliar module | all relevant |
 
 2. **Delegate to the relevant agents** (only those identified in step 1):
 
    - `@architect` — map execution flow, identify coupling and misplaced responsibilities
-   - `@security` — verify authorization on state-changing operations, input validation, data exposure
+   - `@security` — targeted security check when one or two surfaces are present (auth only, injection only, etc.)
+   - `/sec-audit` — use instead of `@security` when the module has multiple security surfaces (auth + input + file, or auth + multi-step flows, etc.)
    - `@performance` — find N+1 patterns, missing indexes, unbounded queries, redundant calls
 
 3. **Synthesize findings**:
