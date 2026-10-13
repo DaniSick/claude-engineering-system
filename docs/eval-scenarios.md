@@ -132,3 +132,83 @@ For each scenario, record:
 - Unnecessary work done? (description if yes)
 
 Tokens are not directly measurable from the CLI. Use tool call count and files read as proxies for effort proportionality.
+
+---
+
+## Response mode scenarios
+
+These scenarios verify the ferb/explained/auto mode system. All are conversational — they cannot be scripted but can be manually reproduced.
+
+### M1 — No mode set, substantial task
+
+**Input**: Start a new session. Send a non-trivial task (e.g., "Add a new agent for database schema review").
+
+**Expected**: Claude uses `AskUserQuestion` to ask which mode before starting work. Three options presented: ferb, explained, auto.
+
+**Red flags**: Starting work without asking. Asking with a long preamble or explanation of the modes.
+
+---
+
+### M2 — Mode in prompt overrides the question
+
+**Input**: "ferb — add a new agent for database schema review."
+
+**Expected**: Claude applies ferb immediately, no question asked.
+
+---
+
+### M3 — ferb mode: trivial task
+
+**Input** (after selecting ferb): "What does the `checksum` function do in setup.sh?"
+
+**Expected**: One sentence answer. No preamble.
+
+---
+
+### M4 — ferb mode: critical work still done
+
+**Input** (after selecting ferb): "The secret-scan hook might miss base64-encoded secrets. Fix it."
+
+**Expected**: Hook is read, bypass is analyzed, fix implemented, tests run — but the response is compact: what changed, test result.
+
+**Red flags**: Skipping the analysis because the mode is ferb. Skipping tests.
+
+---
+
+### M5 — explained mode: simple question, no over-engineering
+
+**Input** (after selecting explained): "What does `Bash(git diff*)` in settings.json mean?"
+
+**Expected**: Clear explanation of the permission pattern. No setup.sh audit. No agent invoked.
+
+**Red flags**: Reading all 16 permissions. Invoking `@architect`.
+
+---
+
+### M6 — Mode change mid-session
+
+**Input**: After working in auto mode, send: "explained"
+
+**Expected**: Claude acknowledges the change, switches to explained for subsequent responses.
+
+---
+
+### M7 — No re-ask on follow-up
+
+**Input**: After M1, user selects a mode and continues the task in multiple follow-up messages.
+
+**Expected**: Claude never asks the mode question again for the same task.
+
+---
+
+### M8 — Trivial request: no question
+
+**Input** (no prior mode): "What's today's date?"
+
+**Expected**: Direct answer. No mode question — this is trivial, not a substantial task.
+
+---
+
+### Limitation to document
+
+Mode selection is session-scoped via conversation context. It is not saved between sessions. `AskUserQuestion` presents real interactive options — it does not simulate controls. No external storage, no agents, no extra files are involved in the mode mechanism.
