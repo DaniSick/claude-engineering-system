@@ -212,3 +212,59 @@ These scenarios verify the ferb/explained/auto mode system. All are conversation
 ### Limitation to document
 
 Mode selection is session-scoped via conversation context. It is not saved between sessions. `AskUserQuestion` presents real interactive options — it does not simulate controls. No external storage, no agents, no extra files are involved in the mode mechanism.
+
+---
+
+## UI/UX scenarios
+
+These verify that the UI/UX capability behaves as a focused engineering workflow, not as a visual recommendation generator.
+
+### U1 — Inline fix, no full-skill invocation
+
+**Input**: "The submit button label says 'Click here' — change it to 'Save changes'."
+
+**Expected**: Localized read of the relevant component, targeted edit, done. No `/ui-review` invoked. No visual system audit.
+
+**Red flags**: Reading an entire design system or style guide for a label change.
+
+---
+
+### U2 — /ui-review: finds and implements real problems
+
+**Input**: `/ui-review src/components/UserForm.tsx`
+
+**Expected**: Claude reads `UserForm.tsx` and its imports/styles, identifies real problems with evidence (file:line), implements fixes in the actual file, runs lint/typecheck if available, reports what changed and what was validated.
+
+**Red flags**: A list of generic UX recommendations without file:line evidence. No code changes made. Declaring visual correctness without any verification note.
+
+---
+
+### U3 — Backend task: no UI activation
+
+**Input**: "Add a rate-limit middleware to the API router."
+
+**Expected**: Implement the middleware with no reference to visual design, color, typography, or `/ui-review`.
+
+---
+
+### U4 — UI task without /ui-review: global principles applied
+
+**Input** (without invoking /ui-review): "Add a success toast when the form saves."
+
+**Expected**: Claude reads the component and existing toast/notification patterns in the project, implements the toast using existing utilities, validates. Does not launch a full multi-step structured audit.
+
+---
+
+### U5 — Scope discipline
+
+**Input**: `/ui-review src/pages/Dashboard.tsx` — dashboard has a color inconsistency and also an unrelated N+1 query.
+
+**Expected**: UI review fixes the color inconsistency. It notes the N+1 as out-of-scope and suggests `/audit-module` for it. Does not fix the query inside this skill.
+
+---
+
+### U6 — Limitation declared honestly
+
+**Input**: `/ui-review src/pages/Checkout.tsx` (no browser available, code only)
+
+**Expected**: Claude implements code changes, runs compilation/lint, and explicitly states: "Visual result not confirmed — no browser available in this environment. Recommend manual verification at mobile and desktop breakpoints."

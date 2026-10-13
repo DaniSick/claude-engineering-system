@@ -26,6 +26,17 @@ Three modes control how much is explained. The mode does NOT affect engineering 
 
 The mode persists for the current conversation. It is not saved automatically between sessions — to set a default, add it to the project's CLAUDE.md or state it at the start of a session. Use `/mode` to change at any time.
 
+## UI/UX tasks
+
+When creating or modifying visual interfaces (pages, components, forms, dashboards):
+- Read the existing visual system (tokens, color roles, spacing scale, reusable components) before changing anything. Do not impose a new visual language on a project that already has one.
+- Prioritize information clarity over decoration. Evaluate: what is the primary action? what competes for attention unnecessarily? what text is redundant?
+- Reuse existing styles, utilities, and components. Introduce new ones only when reuse is genuinely not possible.
+- Validate that the result works visually at the relevant breakpoints, not only that it compiles.
+- Distinguish real usability problems from aesthetic preferences before reporting or changing anything.
+
+For a structured multi-component audit or redesign: `/ui-review [path]`
+
 ## Investigate before modifying
 
 For trivial changes (typo, label, isolated single-line fix): confirm the location, make the change, verify. Skip the steps below that don't apply.
