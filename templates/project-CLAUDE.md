@@ -21,35 +21,35 @@
 <!-- How the codebase is organized. Name the actual directories and layers. -->
 
 Entry points:
-- <!-- e.g. HTTP: routes/web.php, routes/api.php -->
-- <!-- e.g. CLI: app/Console/Commands/ -->
-- <!-- e.g. Queue: app/Jobs/ -->
+- <!-- e.g. HTTP: routes/, controllers/, handlers/ -->
+- <!-- e.g. CLI: commands/, bin/, cli/ -->
+- <!-- e.g. Background: jobs/, workers/, queues/ -->
 
 Layer structure:
-- <!-- e.g. app/Http/Controllers → app/Actions → app/Models -->
-- <!-- describe the intended flow, not just the folders -->
+- <!-- e.g. controllers/ → services/ → models/ -->
+- <!-- e.g. handlers/ → domain/ → persistence/ -->
 
 Key conventions:
-- <!-- e.g. Business logic goes in Actions, never in Controllers or Models -->
-- <!-- e.g. All database access through repositories in app/Repositories/ -->
+- <!-- e.g. Business logic goes in services/, never in controllers or models -->
+- <!-- e.g. All database access through a repository layer -->
 - <!-- e.g. No direct framework calls below the application layer -->
 
 ## How to run things
 
 ```bash
 # Start development server
-# e.g. docker compose up -d && php artisan serve
 # e.g. pnpm dev
+# e.g. docker compose up && go run ./cmd/server
 TODO
 
 # Run tests
-# e.g. php artisan test --parallel
 # e.g. pnpm test
+# e.g. pytest -x
 TODO
 
-# Static analysis
-# e.g. ./vendor/bin/phpstan analyse
+# Static analysis / lint
 # e.g. pnpm lint
+# e.g. mypy src/
 TODO
 
 # Format / fix

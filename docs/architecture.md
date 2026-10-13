@@ -1,67 +1,73 @@
-# System Architecture
+# Architecture
 
-## Design principles
+## Two-layer model
 
-**Two-layer model**:
-1. **Global layer** (`~/.claude/`) — personal engineering conventions, agents, and settings that apply to every Claude Code session regardless of project.
-2. **Project layer** (`.claude/` in each project) — project-specific context, tech stack, commands, and local settings.
+1. **Global layer** (`~/.claude/`) — personal engineering conventions, agents, skills, hooks, and settings that apply to every Claude Code session regardless of project. This repository manages the global layer.
 
-This repo manages the global layer only. Each project manages its own project layer.
+2. **Project layer** (`.claude/` in each project) — project-specific context, tech stack, commands, and local settings. Each project manages its own project layer.
 
 ## Directory mapping
 
-| Repo path | Deployed to | Purpose |
-|-----------|------------|---------|
-| `global/CLAUDE.md` | `~/.claude/CLAUDE.md` | Personal engineering principles loaded in every session |
-| `agents/*.md` | `~/.claude/agents/*.md` | Specialized read-only agents for delegation |
-| `hooks/*.sh` | `~/.claude/hooks/*.sh` | Pre/post tool validation scripts |
-| `global/settings.json` | merged into `~/.claude/settings.json` | Reference for permissions and hook config |
+| Repo path | Deployed to | Managed by |
+|-----------|------------|------------|
+| `global/CLAUDE.md` | `~/.claude/CLAUDE.md` | `setup.sh` direct copy |
+| `agents/*.md` | `~/.claude/agents/*.md` | `setup.sh` direct copy |
+| `.claude/commands/*.md` | `~/.claude/commands/*.md` | `setup.sh` direct copy |
+| `hooks/*.py`, `hooks/*.sh` | `~/.claude/hooks/` | `setup.sh` direct copy |
+| `global/settings.json` | merged into `~/.claude/settings.json` | `setup.sh` additive merge |
+
+## Installer design
+
+`scripts/setup.sh` is idempotent: it compares sha256 checksums and skips files that haven't changed. When a file does change, it backs up the existing deployed version before overwriting.
+
+For `settings.json`, a direct copy would overwrite personal preferences. Instead, the installer does an additive merge of the two sections it manages (`permissions.allow` and `hooks`), leaving all other keys untouched.
 
 ## Agent design
 
-Agents are isolated sub-sessions with constrained instructions. Key decisions:
+**Read-only**: All four agents are read-only. They can read files and run safe inspection commands but must not write, edit, or execute mutations. This prevents analysis agents from accidentally modifying code.
 
-**Read-only constraint**: All four agents (architect, security, performance, reviewer) are read-only. They can read files and run safe commands (git log, grep, ls) but must not write, edit, or execute mutations. This prevents analysis agents from accidentally modifying code.
+**Single responsibility**: Each agent covers one audit dimension. This keeps instructions concise and prevents context dilution.
 
-**Single responsibility**: Each agent covers one audit dimension. This keeps instructions concise and prevents context dilution from loading all analysis patterns simultaneously.
+**Evidence requirement**: Every agent is required to cite `file:line` for every finding. Findings without evidence are not findings.
 
-**Evidence requirement**: Every agent is required to cite file:line for every finding. Findings without evidence are not findings.
-
-**Labeled certainty**: Agents must label each finding as `CONFIRMED` (traced the code path) or `HYPOTHESIS` (inferred from pattern). This prevents false certainty from being reported as fact.
+**Labeled certainty**: Agents must label each finding as `CONFIRMED` (traced the code path) or `HYPOTHESIS` (inferred from pattern).
 
 ## Agent selection guide
 
 | Situation | Agent |
 |-----------|-------|
-| "How does module X interact with Y?" | architect |
-| "Is there an authorization check missing here?" | security |
-| "Why is this endpoint slow?" | performance |
-| "Is this diff safe to merge?" | reviewer |
+| "How does module X interact with Y?" | `@architect` |
+| "Is there an authorization check missing?" | `@security` |
+| "Why is this endpoint slow?" | `@performance` |
+| "Is this diff safe to merge?" | `@reviewer` |
 
-## Skill vs agent
+## Skill design
 
-**Agents** (`.md` files in `agents/`) are sub-sessions with their own persistent instructions. Best for deep, isolated analysis that shouldn't contaminate the main session context.
+Skills (`.claude/commands/*.md`) are multi-step workflows with structured output. They are loaded into the current session rather than running as isolated sub-sessions.
 
-**Skills** (marketplace plugins or `.claude/skills/`) are reusable workflows loaded into the current session. Best for multi-step procedures with structured output.
+Use agents for deep, isolated analysis. Use skills for procedural workflows with defined steps and output format.
 
-For this system: agents for analysis, skills for workflow execution.
+## Hook design
 
-## Settings merge strategy
+Hooks are Python scripts that run before or after tool invocations. The protocol:
+- Claude Code invokes the script with tool data as JSON on stdin
+- The script exits 0 silently when there is nothing to report
+- The script prints `{"systemMessage": "..."}` to stdout when reporting
+- Hooks must never block — exit 0 regardless of outcome
 
-`setup.sh` does NOT replace `~/.claude/settings.json` entirely. It merges only the `permissions.allow` list. Reason: `settings.json` contains user preferences (theme, model) that should not be overwritten by a deployment script.
+The current hook (`secret-scan.py`) is a `PreToolUse` hook on `Bash` that warns before `git commit` if the staged diff contains credential-like patterns.
 
-If hook configuration is needed, it must be added manually or via a specific merge target — not by overwriting the file.
+## Settings management
 
-## What this system does NOT manage
+`global/settings.json` contains only what this system manages:
+- `permissions.allow`: a list of auto-approved command patterns
+- `hooks`: hook event configuration referencing `~/.claude/hooks/`
 
-- **Project CLAUDE.md files**: Each project should define its own. Templates may be provided later.
-- **MCP server configuration**: Connection credentials are environment-specific; not tracked here.
-- **Credentials or secrets**: Never tracked in this repo.
-- **CI/CD pipeline**: Out of scope for a personal configuration system.
+Personal preferences (`theme`, `model`, `includeCoAuthoredBy`) belong in `~/.claude/settings.json` only and are not tracked in this repository.
 
-## Evolution path
+## What this system does not manage
 
-Current: Global config + agents
-Next: Project CLAUDE.md templates for Laravel/Filament, Node/Expo projects
-Later: Hooks when format is validated on WSL2
-Later: Workflow commands in `.claude/commands/` for this repo
+- **Project CLAUDE.md files**: each project defines its own using the provided template
+- **MCP server configuration**: connection credentials are environment-specific
+- **Credentials or secrets**: never tracked in this repository
+- **Claude Code marketplace skills** (`~/.claude/skills/synced/`): synchronized by Claude Code itself
