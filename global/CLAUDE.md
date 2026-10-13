@@ -101,10 +101,11 @@ Label each finding:
 
 Delegate to specialized agents when the task requires distinct expertise on an independent dimension and the benefit justifies the coordination cost. For localized or simple work, inspect directly.
 
-| Task | Agent |
-|------|-------|
+| Task | Agent / Skill |
+|------|--------------|
 | Architecture and dependency analysis | `@architect` |
-| Security audit | `@security` |
+| Security review (targeted or broad) | `@security` |
+| Full security audit with specialists | `/sec-audit` |
 | Performance and query analysis | `@performance` |
 | Pre-commit change review | `@reviewer` |
 
