@@ -19,21 +19,9 @@ When given a module or endpoint to audit, read the entry points first:
 1. What data enters the system? (HTTP params, files, events, jobs, messages, environment)
 2. What sensitive operations happen? (queries, file writes, external calls, state changes, auth checks)
 3. What trust boundaries exist? (unauthenticated vs. authenticated vs. admin vs. internal)
-4. Which specialist domains are present?
+4. What attack surfaces are present? (auth/session, injection/input, web/API, file handling, secrets/crypto, business logic, dependencies)
 
-| Target characteristic | Relevant specialist |
-|----------------------|---------------------|
-| User login, sessions, tokens, account management | `@security-auth` |
-| Authorization, permissions, tenant isolation, IDOR | `@security-auth` |
-| SQL/NoSQL queries with dynamic input | `@security-injection` |
-| User-controlled values used in commands, templates, or paths | `@security-injection` |
-| HTTP endpoints, CORS, CSRF, API responses | `@security-web` |
-| File upload, download, or path-based file operations | `@security-data` |
-| Secrets, credentials, crypto configuration, sensitive data in logs | `@security-data` |
-| Multi-step flows, financial operations, state machines | `@security-logic` |
-| Package dependencies, supply chain | `@security-deps` |
-
-Invoke only the specialists relevant to this target. A queue job that runs no HTTP handlers and touches no files needs only injection and logic analysis, not web or data agents.
+For targeted or narrow-scope questions, proceed to direct analysis below. For broad or multi-surface audits, use `/sec-audit` — it orchestrates specialist agents from the main session.
 
 ## Direct analysis (for narrow scope or targeted questions)
 
