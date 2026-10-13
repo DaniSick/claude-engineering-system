@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(ls*)",
+      "Bash(find . *)",
+      "Bash(grep *)",
+      "Bash(cat ~/.claude/CLAUDE.md)",
+      "Bash(cat ~/.claude/agents/*)",
+      "Bash(cat ~/.claude/settings.json)",
+      "Bash(ls ~/.claude/agents/)",
+      "Bash(bash scripts/setup.sh)"
+    ]
+  }
+}
