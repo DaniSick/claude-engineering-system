@@ -26,7 +26,31 @@ Read the component/page files, templates, stylesheets, and design tokens for the
 
 Do not assume framework behavior — read the actual implementations.
 
-### 2. Identify problems (evidence required)
+### 2. Evaluate screen and action hierarchy
+
+Before identifying defects, establish what the screen must accomplish. This determines which defects matter and which are acceptable trade-offs.
+
+**User goal and information priority**
+- What is the user's primary task on this screen? What must complete successfully for the visit to succeed?
+- What information must be immediately visible to begin the task?
+- What is secondary — supportive but not required at first glance?
+- What is noise — always visible but rarely or never needed, or needed only in exceptional cases?
+
+**Action hierarchy**
+- Identify the primary action (what the user does most or must do to complete the goal)
+- Identify secondary actions (supporting operations, lower frequency or lower stakes)
+- Identify destructive or exceptional actions (delete, cancel, reset, irreversible operations)
+- Determine which actions belong to the same operation and should be spatially grouped
+- Determine whether actions at the same visual level actually have the same functional weight
+
+Decide this from the screen's context — functional relationship, frequency, risk, and reversibility. Not every set of buttons needs grouping; not every destructive action needs a modal. Avoid adding visual separation or grouping without a functional reason.
+
+**Relevant states**
+Which states apply to this screen: initial/empty, loading, success, error, partial selection, confirmation prompt? Each must be visually distinguishable and give the user enough information to act. Identify which states are missing or indistinguishable.
+
+Use findings from this evaluation to focus step 3 (Identify problems) and step 4 (Implement).
+
+### 3. Identify problems (evidence required)
 
 Evaluate by category. A finding requires evidence (file:line); "it doesn't look right" is not a finding.
 
@@ -61,7 +85,7 @@ Evaluate by category. A finding requires evidence (file:line); "it doesn't look 
 
 Prioritize findings by: frequency of use × impact on task completion × effort to fix. Do not rewrite a full screen when a localized change solves the problem.
 
-### 3. Implement
+### 4. Implement
 
 - Make changes in the actual component files using the project's conventions
 - Reuse existing tokens, utilities, and components — do not introduce a new design system
@@ -69,7 +93,7 @@ Prioritize findings by: frequency of use × impact on task completion × effort 
 - Do not add decorative elements (gradients, shadows, animations) without a functional purpose
 - Preserve all existing functionality: permissions, validation, contracts, data flows
 
-### 4. Validate
+### 5. Validate
 
 - Run the relevant tests (unit, component, a11y if available)
 - Run lint and typecheck if the project has them
@@ -83,11 +107,11 @@ Report what was inspected, what was found, what changed, what was validated, and
 
 | Scope | Approach |
 |-------|---------|
-| Single component fix | Localized read, targeted change, run affected tests |
-| New form or page | Read existing patterns first, implement consistently, full validation |
-| Cross-cutting redesign | Map the visual system, verify consistency across screens, broader validation, consider @reviewer on the diff |
+| Single component fix | Localized read; skip steps 2–3 if hierarchy is not in question; targeted change; run affected tests |
+| Screen refactor | Full steps 1–5: hierarchy evaluation, action priority, states, related components, full validation |
+| Cross-cutting redesign | Deeper analysis only when multiple screens or shared components are affected; consider @reviewer on the diff |
 
-In `ferb` mode: short final report. Full implementation and validation still apply.
+In `ferb` mode: short final report (verdict, findings, action). Full implementation and validation still apply; step 2 evaluation is always required before modifying a screen.
 
 ## What not to do
 
