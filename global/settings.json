@@ -1,0 +1,28 @@
+{
+  "theme": "dark",
+  "model": "claude-sonnet-4-6",
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git remote*)",
+      "Bash(git show*)",
+      "Bash(ls*)",
+      "Bash(find . *)",
+      "Bash(grep *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(pwd)",
+      "Bash(echo *)",
+      "Bash(which *)",
+      "Bash(php artisan route:list*)",
+      "Bash(./vendor/bin/phpstan analyse*)",
+      "Bash(./vendor/bin/pint --test*)"
+    ]
+  }
+}
