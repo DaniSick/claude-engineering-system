@@ -43,26 +43,22 @@ ls ~/.claude/CLAUDE.md ~/.claude/agents/
 ## Requirements
 
 - Claude Code >= 2.1.87
-- WSL2 / Linux environment
-- `bash`, `git`
-
-## Primary stack
-
-Laravel · PHP · Filament · Blade · Livewire · PostgreSQL · Docker
+- Linux / macOS / WSL2
+- `bash`, `git`, `python3` (for setup.sh settings merge)
 
 ## Using agents
 
 In any Claude Code session:
 
 ```
-# Delegate architecture analysis
-@architect analyze the module structure in app/Services/
+# Delegate architecture analysis (path depends on the project)
+@architect analyze the module structure in src/services/
 
 # Request security audit
-@security review app/Http/Controllers/Auth/
+@security review src/auth/
 
 # Performance investigation
-@performance find N+1 queries in app/Models/
+@performance find redundant queries in the data access layer
 
 # Pre-commit review
 @reviewer check the current diff

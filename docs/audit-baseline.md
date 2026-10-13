@@ -9,7 +9,7 @@ Initial state audit before any system modifications. Every finding is based on d
 | Claude Code version | 2.1.87 | CONFIRMED |
 | OS | WSL2 (Linux 5.15 on Windows) | CONFIRMED |
 | Shell | fish | CONFIRMED |
-| Claude alias | `/mnt/c/Users/tiave/.local/bin/claude.exe` | CONFIRMED |
+| Claude alias | Windows binary via WSL2 path alias | CONFIRMED |
 | Subscription | Max (claude-sonnet-4-6 default) | CONFIRMED |
 
 ## Repository state
@@ -61,7 +61,7 @@ Priority: MEDIUM-LOW (affects friction, not correctness)
 
 ## Installed marketplace plugins
 
-All installed at `/home/daniel/.claude/plugins/marketplaces/claude-plugins-official/plugins/`:
+All installed at `~/.claude/plugins/marketplaces/claude-plugins-official/plugins/`:
 
 | Plugin | Purpose | Activation |
 |--------|---------|------------|
@@ -79,16 +79,11 @@ All installed at `/home/daniel/.claude/plugins/marketplaces/claude-plugins-offic
 
 **Finding**: All installed and functional. No custom configuration needed. Available via `/skill <name>`.
 
-## Active projects detected
+## Active projects
 
-| Project | Path | Stack |
-|---------|------|-------|
-| LUJOLAB | `/home/daniel/LUJOLAB` | Laravel, PHP, Docker |
-| sgc-filament | `/home/daniel/sgc-filament` | Laravel, Filament, Docker |
-| saas-jetstream | `/home/daniel/saas-jetstream` | Laravel, Jetstream |
-| owner-app-sgi | `/home/daniel/owner-app-sgi` | Expo/React Native |
+Multiple projects were detected on the machine at audit time, spanning Laravel/PHP/Docker and Expo/React Native stacks.
 
-**Finding**: None of these projects have a `CLAUDE.md` at the project root. Each session in these projects has no local context.
+**Finding**: None of the active projects had a `CLAUDE.md` at the project root. Each session in these projects had no local context.
 
 ## Gap analysis — prioritized
 
@@ -109,9 +104,9 @@ All installed at `/home/daniel/.claude/plugins/marketplaces/claude-plugins-offic
    - Verification: `@architect` responds in session with architecture-analysis behavior.
 
 3. **Projects lack CLAUDE.md**
-   - Evidence: `find /home/daniel/{LUJOLAB,sgc-filament,saas-jetstream} -maxdepth 1 -name CLAUDE.md` → none
+   - Evidence: Inspected active project roots — none had a `.claude/` directory or `CLAUDE.md` file
    - Impact: Each project session has no local architecture context, no tech-specific rules.
-   - Fix: Create project CLAUDE.md templates. Defer actual project files to when working in each project.
+   - Fix: Create a generic CLAUDE.md template per technology family. Apply when starting work in each project.
    - Verification: Session in project picks up local context.
 
 ### P2 — MEDIUM

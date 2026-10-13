@@ -1,13 +1,14 @@
-# Engineering Principles — Global Configuration
+# Engineering Principles — Personal Configuration
 
-Stack: Laravel · PHP · Filament · Blade · Livewire · PostgreSQL · Docker
-Environment: WSL2, fish shell, Claude Code 2.1.87+
+## Detect before assuming
+
+Read the project's technology before applying any rule. Identify the language, framework, build system, database, and test tooling from the actual files. Do not assume a stack.
 
 ## Investigate before modifying
 
 Before editing any file:
-1. Read the relevant code — routes, controllers, models, services, tests.
-2. Understand the execution path from entry point to the affected layer.
+1. Read the relevant code — entry points, modules, interfaces, data models, and tests.
+2. Trace the execution path from the trigger to the affected component.
 3. Identify what already exists that can be reused.
 4. Confirm the root cause before proposing a fix.
 
@@ -15,34 +16,35 @@ Do not read a file name and assume you understand the code inside it.
 
 ## Non-negotiable rules
 
-- **Find root causes.** Trace execution, do not patch symptoms.
-- **Reuse first.** Find existing models, scopes, services, actions, traits, helpers, DTO, and components before creating new ones.
-- **Preserve contracts.** Do not change method signatures, permission gates, API responses, or public interfaces without explicit authorization.
-- **Minimum scope.** Do not add migrations, dependencies, schema changes, or refactors beyond the stated task.
+- **Find root causes.** Trace execution; do not patch symptoms.
+- **Reuse first.** Find existing components, abstractions, utilities, and patterns before adding new ones.
+- **Preserve contracts.** Do not change public interfaces, API responses, permissions, or observable behavior without explicit authorization.
+- **Minimum scope.** Do not add dependencies, schema changes, or refactors beyond the stated task.
 - **No cosmetic cleanup.** Do not reorganize unrelated code unless authorized.
-- **Test what you change.** Write or run tests for the modified behavior. Distinguish PASS, FAIL, NOT RUN, BLOCKED.
+- **Test what you change.** Run or write tests for modified behavior. Label results as PASS, FAIL, NOT RUN, or BLOCKED.
 
 ## Quality checklist before finishing any task
 
-- [ ] No N+1 queries introduced (use eager loading; verify with query logs or `telescope`)
-- [ ] No duplicate logic (single source of truth for business rules)
-- [ ] Authorization verified on every new endpoint or action
-- [ ] Input validated at system boundaries (requests, jobs, external APIs)
+- [ ] No unnecessary repeated calls to external systems (N+1, redundant requests, duplicate queries)
+- [ ] No duplicate logic — single source of truth for business rules
+- [ ] Authorization verified on every new action that modifies state or reads sensitive data
+- [ ] Input validated at system boundaries (HTTP, jobs, external APIs, CLI arguments)
 - [ ] No secrets, tokens, or credentials in code or committed files
-- [ ] Static analysis clean (`./vendor/bin/phpstan`, `./vendor/bin/pint`, or equivalent)
+- [ ] Static analysis and linting clean (use the appropriate tool for the project's language)
 - [ ] Relevant tests passing
 
 ## Security rules
 
-- Every HTTP action must check authorization: `$this->authorize()`, `Gate::check()`, `Policy`.
-- Multi-tenant: always scope queries to the authenticated organization/tenant. Never expose cross-tenant data.
-- Never expose raw database IDs where UUIDs or hashed IDs are expected.
-- File uploads: validate MIME type server-side, store outside webroot, never execute uploaded content.
-- No `eval()`, no `shell_exec()` with user input, no raw SQL with interpolated variables.
+- Every action that modifies state or reads sensitive data must verify authorization before executing.
+- When the system is multi-tenant, always scope data access to the authenticated context. Never expose cross-tenant data.
+- Validate and sanitize all user-controlled input before using it in queries, commands, file paths, or output.
+- Never execute user-supplied content, deserialize untrusted data without schema validation, or pass user input to system calls.
+- File uploads: validate type server-side, store outside the public root, never execute uploaded content.
+- No secrets, API keys, passwords, or tokens hardcoded in source or config files that are committed.
 
 ## Audit output format
 
-When auditing, structure findings as a table:
+Structure findings as a table:
 
 | # | Finding | Evidence (file:line) | Impact | Priority | Proposed Fix | Risk |
 |---|---------|---------------------|--------|----------|--------------|------|
@@ -62,29 +64,20 @@ Label each finding:
 
 ## Specialized delegation
 
-For deep audits, delegate to specialized agents rather than loading full context:
+For deep audits, delegate to specialized read-only agents:
 
-| Task | Agent | Activation |
-|------|-------|-----------|
-| Architecture / dependency analysis | architect | `@architect` |
-| Security audit | security | `@security` |
-| N+1 / query performance | performance | `@performance` |
-| Pre-commit change review | reviewer | `@reviewer` |
-
-## Context management
-
-Keep CLAUDE.md files concise. Procedure-heavy workflows belong in skills, not in always-loaded instructions.
-
-Use `/code-review` for detailed code review.
-Use `/claude-security` for security audit workflow.
-Use `/simplify` for simplification pass.
-Use `/commit-commands` for commit workflow.
+| Task | Agent |
+|------|-------|
+| Architecture and dependency analysis | `@architect` |
+| Security audit | `@security` |
+| Performance and query analysis | `@performance` |
+| Pre-commit change review | `@reviewer` |
 
 ## What not to do
 
 - Do not declare a test passed without running it.
-- Do not invent CLI flags, config options, hooks, or capabilities.
+- Do not invent CLI flags, config options, hooks, or API capabilities.
 - Do not expose `.env`, credentials, API keys, or secrets.
-- Do not run `rm -rf`, `DROP TABLE`, `git reset --hard`, or `git push --force` without explicit authorization.
-- Do not add migrations, dependencies, or schema changes beyond the task scope.
+- Do not run destructive commands (delete, drop, reset, force-push) without explicit authorization.
+- Do not add schema migrations, external dependencies, or configuration changes beyond the task scope.
 - Do not merge unrelated changes into the same commit.

@@ -62,14 +62,14 @@ if [[ -d "$REPO_DIR/hooks" ]]; then
     done
 fi
 
-# 4. Update settings.json — merge permissions allowlist only
-# We do NOT overwrite settings.json entirely to preserve user preferences.
-# Only the permissions.allow list is merged.
+# 4. Update settings.json — replace permissions.allow with reference list
+# User preferences (theme, model, etc.) are preserved.
+# permissions.allow is replaced entirely so removed entries are also removed.
 SETTINGS="$CLAUDE_DIR/settings.json"
 REF_SETTINGS="$REPO_DIR/global/settings.json"
 
 if command -v python3 &>/dev/null; then
-    log "Merging permissions allowlist into $SETTINGS..."
+    log "Updating permissions allowlist in $SETTINGS..."
     python3 - "$SETTINGS" "$REF_SETTINGS" <<'PYEOF'
 import json, sys
 
@@ -87,24 +87,23 @@ except (FileNotFoundError, json.JSONDecodeError):
 with open(ref_path) as f:
     ref = json.load(f)
 
-# Merge permissions.allow (union, preserve existing)
-current_allow = set(settings.get("permissions", {}).get("allow", []))
-ref_allow = set(ref.get("permissions", {}).get("allow", []))
-merged_allow = sorted(current_allow | ref_allow)
+# Replace permissions.allow with the reference list (authoritative)
+# Tech-specific permissions belong in project-level .claude/settings.json
+ref_allow = sorted(ref.get("permissions", {}).get("allow", []))
 
 if "permissions" not in settings:
     settings["permissions"] = {}
-settings["permissions"]["allow"] = merged_allow
+settings["permissions"]["allow"] = ref_allow
 
 # Write back
 with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)
     f.write("\n")
 
-print(f"[setup] Merged {len(ref_allow)} permissions into settings.json ({len(merged_allow)} total)")
+print(f"[setup] Set {len(ref_allow)} permissions in settings.json")
 PYEOF
 else
-    warn "python3 not available. Skipping settings.json merge. Copy permissions manually from $REF_SETTINGS"
+    warn "python3 not available. Skipping settings.json update. Copy permissions manually from $REF_SETTINGS"
 fi
 
 echo

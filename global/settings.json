@@ -19,10 +19,7 @@
       "Bash(wc *)",
       "Bash(pwd)",
       "Bash(echo *)",
-      "Bash(which *)",
-      "Bash(php artisan route:list*)",
-      "Bash(./vendor/bin/phpstan analyse*)",
-      "Bash(./vendor/bin/pint --test*)"
+      "Bash(which *)"
     ]
   }
 }
