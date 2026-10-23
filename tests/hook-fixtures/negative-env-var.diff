@@ -1,0 +1,7 @@
+diff --git a/app.py b/app.py
+index e69de29..1234567 100644
+--- a/app.py
++++ b/app.py
+@@ -0,0 +1,2 @@
++import os
++token = os.environ["AUTH_TOKEN"]

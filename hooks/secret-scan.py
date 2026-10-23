@@ -12,12 +12,14 @@ import sys
 
 
 CREDENTIAL_PATTERNS = [
-    # key = value with a non-trivial value
-    r'^\+.{0,40}(?:password|passwd|secret|api[_-]?key|private[_-]?key|access[_-]?token|auth[_-]?token)\s*[=:]\s*["\']?[^\s"\']{8,}',
-    # Bearer tokens
-    r'^\+.{0,10}Bearer\s+[A-Za-z0-9+/=_\-]{20,}',
-    # AWS-style keys
-    r'^\+.{0,10}(?:AKIA|ASIA)[A-Z0-9]{16}',
+    # key = value with a non-trivial value (anywhere in the added line)
+    r'^\+.*?(?:password|passwd|secret|api[_-]?key|private[_-]?key|access[_-]?token|auth[_-]?token)\s*[=:]\s*["\']?[^\s"\']{8,}',
+    # Bearer tokens (anywhere in the added line)
+    r'^\+.*?Bearer\s+[A-Za-z0-9+/=_\-]{20,}',
+    # AWS-style keys (anywhere in the added line)
+    r'^\+.*?(?:AKIA|ASIA)[A-Z0-9]{16}',
+    # Generic high-entropy tokens that look like JWT or GitHub PATs
+    r'^\+.*?(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}',
 ]
 
 

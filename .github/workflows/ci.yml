@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Install shellcheck (macOS)
+        if: runner.os == 'macOS'
+        run: brew install shellcheck
+
+      - name: Shellcheck
+        run: |
+          shellcheck -S warning scripts/setup.sh scripts/doctor.sh scripts/uninstall.sh scripts/test.sh tests/*.sh
+
+      - name: Prepare a stub ~/.claude so setup.sh can target it
+        run: |
+          mkdir -p "$HOME/.claude"
+          echo '{}' > "$HOME/.claude/settings.json"
+
+      - name: Run doctor (pre-setup, soft failures allowed)
+        run: bash scripts/doctor.sh || [ $? -eq 2 ]
+
+      - name: Deploy with setup.sh
+        run: bash scripts/setup.sh
+
+      - name: Verify deployment
+        run: bash scripts/setup.sh --verify
+
+      - name: Frontmatter validation
+        run: bash tests/test-frontmatter.sh
+
+      - name: Hook detection tests
+        run: bash tests/test-hook.sh
+
+      - name: Full test suite
+        run: bash scripts/test.sh
+
+      - name: Doctor final (must be clean)
+        run: bash scripts/doctor.sh
+
+      - name: Uninstall dry-run
+        run: bash scripts/uninstall.sh --dry-run
+
+      - name: Uninstall apply
+        run: bash scripts/uninstall.sh --yes
+
+      - name: Confirm uninstall left settings.json valid
+        run: python3 -m json.tool "$HOME/.claude/settings.json"
+
+  lint-markdown:
+    name: Lint markdown
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: |
+            *.md
+            docs/**/*.md
+            agents/**/*.md
+            .claude/commands/**/*.md
+          config: .markdownlint.json
