@@ -1,8 +1,29 @@
 # Changelog
 
-## [Unreleased]
+All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/).
 
-### Added (2026-10-13)
+## [0.2.0] — 2026-10-23
+
+### Added
+- `LICENSE` (MIT) as a real file, matching the README claim.
+- `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`.
+- `.github/ISSUE_TEMPLATE/` with bug and feature forms.
+- `.github/PULL_REQUEST_TEMPLATE.md` with per-component checklist.
+- `.github/FUNDING.yml`.
+- `scripts/uninstall.sh`: reads the manifest at `~/.claude/backups/ces/manifest.json` and either removes or restores (`--restore`) every managed file. Also strips the permissions and hook entries that `global/settings.json` contributed, leaving user keys intact. Supports `--dry-run` and `--yes`.
+- `scripts/doctor.sh`: health check for required tools, repository shape, Claude Code environment, deployment drift, `settings.json` validity, and hook executability. Exits `0`/`1`/`2`; supports `--json`.
+- `scripts/measure-tokens.sh`: reports the token cost of every file the system deploys. Uses `tiktoken` when installed, falls back to a bytes/3.5 heuristic. Supports `--json`.
+- `.github/workflows/ci.yml`: GitHub Actions pipeline on Ubuntu and macOS — shellcheck, setup, verify, frontmatter check, hook tests, full suite, doctor, uninstall dry-run and apply, markdown lint.
+- `.markdownlint.json` with pragmatic defaults.
+- `tests/hook-fixtures/`: 3 positive (password, AWS, Bearer) and 2 negative (doc text, env var) diffs.
+- `tests/test-hook.sh`: exercises `secret-scan.py` against the fixtures with a mocked `git` on `PATH`.
+- `tests/test-frontmatter.sh`: validates YAML frontmatter in every agent and skill (`name:` matches filename, `description:` present and under 500 characters).
+- `docs/token-budget.md`: explains the real per-turn token cost and when the system is a net save vs. a net cost.
+
+### Fixed
+- `hooks/secret-scan.py`: credential patterns are now anchored to `^\+.*?` instead of `^\+.{0,10}`, so AWS access keys and Bearer tokens are detected regardless of their position in the added line. Adds GitHub PAT prefix detection (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`).
+
+## [0.1.1] — 2026-10-13
 - **Advanced security engineering system** — orchestrator + 6 domain specialists + `/sec-audit` skill:
   - `agents/security.md` (rewritten as orchestrator): scope assessment, specialist selection table, direct analysis for narrow scope, coverage matrix format
   - `agents/security-auth.md`: authentication flows, session management, JWT/OAuth, IDOR/BOLA, mass assignment, multi-tenancy
