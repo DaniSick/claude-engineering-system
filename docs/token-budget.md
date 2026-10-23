@@ -22,23 +22,25 @@ Run `bash scripts/measure-tokens.sh` for an up-to-date count. The reference figu
 
 | Surface | Lines | Bytes | Approx tokens |
 |---------|------:|------:|--------------:|
-| `global/CLAUDE.md` | 120 | 7.4 KB | ~2,150 |
+| `global/CLAUDE.md` | 173 | 10.4 KB | ~3,030 |
 | Mean `agents/*.md` | 100 | 5.5 KB | ~1,560 |
 | Largest agent (`security-web.md`) | 145 | 7.8 KB | ~2,280 |
-| Mean `.claude/commands/*.md` | 70 | 3.1 KB | ~890 |
+| Mean `.claude/commands/*.md` | 73 | 3.3 KB | ~910 |
 | Largest skill (`ui-review.md`) | 124 | 6.2 KB | ~1,820 |
 
-Permanent per-turn cost: **~2,150 tokens** from the global principles file.
+Permanent per-turn cost: **~3,030 tokens** from the global principles file.
 
 A session that invokes two agents and one skill once each loads an additional ~4,000 tokens, but only on the turns where they fire.
+
+The permanent cost went up (+880 tokens vs. 0.2.0) because `global/CLAUDE.md` now carries the six response modes (`ninja`, `ferb`, `surgical`, `blueprint`, `explained`, `auto`) with the strategic rules that make the saver modes actually cheap. The expectation is that these rules save more tokens per task than they add per turn — see "How savings happen" below.
 
 ## How savings happen
 
 The system does not reduce input tokens compared to a blank Claude Code session — in fact, it adds ~1,300 permanent tokens. The savings are indirect:
 
-1. **Fewer wasted turns.** The global principles file tells the model to detect the stack, trace root causes, and reuse existing code before writing new code. This cuts the common failure mode where the model asks obvious questions, scaffolds code that already exists, or edits the wrong file. One extra wasted turn costs 5,000–30,000 input tokens; the fixed ~2,150 pays for itself the first time it prevents one.
+1. **Fewer wasted turns.** The global principles file tells the model to detect the stack, trace root causes, and reuse existing code before writing new code. This cuts the common failure mode where the model asks obvious questions, scaffolds code that already exists, or edits the wrong file. One extra wasted turn costs 5,000–30,000 input tokens; the fixed ~3,030 pays for itself the first time it prevents one.
 2. **Narrow agents instead of a wide context.** The specialized security and performance agents run with their own small prompt and read only the files relevant to one dimension. The alternative — asking the main session to do a security audit — pulls much more code into the main context and keeps it there for the rest of the conversation.
-3. **Response modes.** `ferb` suppresses explanation. On a long debugging session this reduces assistant output tokens by roughly half compared to the default verbose style.
+3. **Saver response modes with strategic rules, not just terse text.** The modes `ninja`, `ferb`, `surgical`, and `blueprint` each add concrete rules: no re-reading files in context, `grep`/`find` to locate before opening, no decision surveys, no agents for light or normal tasks, one update per task instead of per step, no filler words. Those rules cut both input and output tokens on every turn. `blueprint` additionally caps the cost of multi-file tasks by forcing a 3-5 bullet plan before any edit, which prevents the expensive case of discovering mid-execution that you were heading the wrong way.
 4. **Read-only agents.** `architect`, `performance`, `reviewer`, and the `security-*` family cannot write files. The harness can and does short-circuit them when their analysis is enough, instead of letting a long edit cycle run.
 
 None of this is magic. If the user asks a one-line question, this system costs more tokens than not having it. The gain shows up on tasks that would otherwise take several wrong turns.
@@ -57,7 +59,7 @@ If you want exact Claude tokenization, run the Anthropic `count_tokens` API on e
 
 ## When this system is a net cost
 
-- One-off questions ("what does `uniq -c` do?"). The 2,150 tokens are wasted.
+- One-off questions ("what does `uniq -c` do?"). The 3,030 tokens are wasted.
 - Projects with a very small CLAUDE.md already present. The global file duplicates intent.
 - Sessions that never invoke an agent or skill.
 

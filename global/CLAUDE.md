@@ -16,15 +16,68 @@ Start at the lowest level that's reliable. Escalate when unknown dependencies su
 
 ## Response modes
 
-Three modes control how much is explained. The mode does NOT affect engineering effort — investigation, validation, and safety always match the task's actual complexity and risk.
+Modes control response verbosity AND, for the saver modes, how aggressively Claude cuts tool and agent cost. They do NOT lower investigation, validation, or safety for the task's actual risk — a security issue still gets the full trace, just reported shorter.
 
-- **ferb** — result first, minimal explanation. Code tasks: changed files, test result, outcome. Errors: cause and fix in a few lines. Decisions explained only when they're non-obvious or risky.
-- **explained** — sufficient context to understand decisions. Causes, alternatives, risks, reproducible steps when relevant. Not an essay — stop when the context is complete.
-- **auto** — adapt to the task. Concise for simple requests; developed for architecture changes, security issues, debugging, or hard-to-reverse decisions.
+| Mode | Output | Reads | Agents | Updates | When to use |
+|------|--------|-------|--------|---------|-------------|
+| `ninja` | diff + 1-line outcome, zero prose | minimum, grep before Read | never | none during work | you read diffs; want pure signal |
+| `ferb` | result first, ≤3-line explanation | targeted, no re-reads | only `deep` tasks | at most one per task | the default saver |
+| `surgical` | just the change and why | one file, one zone, no exploration | never | none | known codebase, pinpoint fix |
+| `blueprint` | 3-5 bullet plan → wait OK → execute | plan phase only | plan phase only | after approval | multi-file, risky, or unclear |
+| `explained` | causes, alternatives, risks, steps | normal | when they add value | normal | learning, design decisions |
+| `auto` | adapts per task | adapts | adapts | adapts | mixed sessions |
 
-**When a new substantial task arrives and no mode has been set for this session**: use `AskUserQuestion` to ask which mode they prefer before starting work. Present three options: ferb, explained, auto. Do not ask on follow-ups to the same task, on trivial requests, or when the user has stated a mode in their prompt. If the user writes `ferb`, `explained`, or `auto` as a standalone instruction, apply it immediately without asking.
+### ferb (optimized) — strategic token saver
 
-The mode persists for the current conversation. It is not saved automatically between sessions — to set a default, add it to the project's CLAUDE.md or state it at the start of a session. Use `/mode` to change at any time.
+Behavioral rules in `ferb`, apply them all:
+
+1. **Act, don't announce.** No "voy a hacer X" or "let me check Y". The tool call speaks for itself.
+2. **No re-reading.** Files already shown in the context stay in context — do not Read them again. Edit directly from the latest known state.
+3. **Locate before opening.** Use `grep` / `find` / `Explore` to pin the location in one call before reading a file end-to-end.
+4. **One update per task, not per step.** Silent while working. Announce only when direction changes, when blocked, or at the end.
+5. **No decision surveys.** When you have enough to decide, decide. Do not list 3 options with trade-offs — pick and go.
+6. **Batch questions at the end.** If several ambiguities surface, bundle them in one `AskUserQuestion` block, not scattered.
+7. **No agent for light/normal tasks.** Agents reload fresh prompts; use them only for `deep` tasks or an independent dimension (security, perf).
+8. **No restating the user's prompt or re-explaining what the tool just output.** The user saw both.
+9. **No filler.** No "Perfecto", "Listo", "Ahora voy a", "Como puedes ver". Delete those words from your output.
+10. **Close with one line.** What changed, what's next (if anything). Nothing else.
+
+### ninja — maximum compression
+
+Everything from `ferb`, plus:
+
+- Zero prose during work. Only tool calls.
+- Final response is: the diff (if any) + one line summarizing the outcome. No tables, no headers, no sections.
+- Skip the task list unless the user asked for one.
+- Trade-off: the user must be able to read diffs directly.
+
+### surgical — minimum reads, maximum focus
+
+- Target exactly one file or one zone. Do not explore sibling files unless the change breaks a direct caller you can prove by one grep.
+- No agents. No background tasks. No speculative tests.
+- If scope creeps beyond the first identified change, stop and surface it instead of expanding silently.
+- Output: the edit, one sentence on why, test result. Done.
+
+### blueprint — plan to avoid wasted work
+
+- First response: a plan in 3-5 bullets covering (a) what you'll change, (b) which files, (c) what you'll NOT touch, (d) what could go wrong.
+- Then wait for OK. Do not read files beyond what the plan needed, do not touch code.
+- On OK, switch to `ferb` behavior to execute.
+- On any objection, revise the plan without starting work.
+- Rationale: a single wasted iteration on a complex task costs more than the whole plan phase.
+
+### When to pick what
+
+- **Light task (typo, label, one-line fix)** → `surgical` is cheapest.
+- **Normal task you know the shape of** → `ferb`.
+- **Pure signal, you read the diff** → `ninja`.
+- **Multi-file / unclear / risky** → `blueprint`.
+- **Learning or deciding together** → `explained`.
+- **Mixed, don't want to pick each time** → `auto`.
+
+**When a new substantial task arrives and no mode has been set**: use `AskUserQuestion` to pick one of {ninja, ferb, surgical, blueprint, explained, auto}. Skip the ask on follow-ups to the same task, on trivial requests, or when the user wrote a mode name as a standalone instruction. If the user writes any of those names in their prompt, apply it immediately.
+
+The mode persists for the current conversation. To set a default, add it to the project's CLAUDE.md. Use `/mode <name>` to change at any time.
 
 ## UI/UX tasks
 

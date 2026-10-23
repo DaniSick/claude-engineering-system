@@ -19,9 +19,11 @@ Goal: fewer wasted turns on real engineering tasks. See [`docs/token-budget.md`]
 
 Current token footprint, measured by `scripts/measure-tokens.sh`:
 
-- Permanent per-turn cost (`CLAUDE.md`): **~2,150 tokens**.
+- Permanent per-turn cost (`CLAUDE.md`): **~3,030 tokens** (includes the six response modes and their strategic token-saving rules).
 - Mean agent (loaded on invocation): ~1,560 tokens.
-- Mean skill (loaded on invocation): ~890 tokens.
+- Mean skill (loaded on invocation): ~910 tokens.
+
+Response modes (`/mode <name>`): `ninja` (max compression), `ferb` (strategic saver, default), `surgical` (minimum reads), `blueprint` (plan first), `explained`, `auto`. See [`docs/token-budget.md`](docs/token-budget.md) and `/mode` for details.
 
 ## Requirements
 

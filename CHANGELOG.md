@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-10-23
+
+### Added
+- Three new response modes beyond `ferb`/`explained`/`auto`:
+  - **ninja** — maximum compression. Zero prose during work, final response is diff + one-line outcome.
+  - **surgical** — one file, one zone, no agents, no exploration. For pinpoint fixes.
+  - **blueprint** — 3-5 bullet plan → wait OK → execute in ferb. Avoids multi-file rework.
+- Strategic saver rules in `ferb` (now its own section in `global/CLAUDE.md`):
+  no announcing before tool calls, no re-reading files already in context,
+  `grep`/`find` to locate before opening, one update per task, no decision
+  surveys, batched questions at the end, no agents for light/normal tasks,
+  no restating prompts or tool output, no filler words.
+- `/mode` skill updated to accept all six values and show them in `AskUserQuestion`.
+- `docs/token-budget.md` revised with the new permanent footprint
+  (~3,030 tokens) and how the saver modes actually produce savings.
+
+### Changed
+- `global/CLAUDE.md` grew by ~880 tokens to carry the mode definitions
+  and strategic rules. The design bet is that the per-task savings from
+  the new rules exceed the per-turn cost.
+- README shows the new mode list and the updated token footprint.
+
 ## [0.2.0] — 2026-10-23
 
 ### Added
