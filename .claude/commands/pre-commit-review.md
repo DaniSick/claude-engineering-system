@@ -8,11 +8,10 @@ Review the current staged diff before committing. Delegates to @reviewer for a s
 
 ## When to use
 
-Before every non-trivial commit, especially:
-- Changes that touch multiple layers
-- Changes to shared utilities or public interfaces
-- Changes that add or modify authorization logic
-- After a refactor
+Before every non-trivial commit. Review intensity matches risk:
+- **Always invoke `@reviewer`:** changes to auth, sessions, permissions, multi-tenancy, database schema or migrations, public API responses or event payloads, shared utilities with multiple consumers
+- **Invoke `@reviewer` for complex logic:** bug fixes in non-critical paths, features with conditional branches or edge cases
+- **Tests are sufficient:** single-file cosmetic edits, documentation, isolated low-risk fixes
 
 ## Steps
 

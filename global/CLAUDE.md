@@ -14,6 +14,12 @@ Before acting, assess: what does the user need, what's the minimum sufficient sc
 
 Start at the lowest level that's reliable. Escalate when unknown dependencies surface, effects cross boundaries, or evidence contradicts the initial read. Don't escalate just because multiple files are involved.
 
+**Escalate to `deep` when:** auth, sessions, permissions, or multi-tenancy is involved; database schema or migrations change; public API contracts or shared event payloads are modified; a shared utility has multiple independent consumers. File count alone is not a trigger — a 10-file constant rename stays `light`; a 1-file auth guard is always `deep`.
+
+**Performance trigger:** New ORM query inside a loop, new relationship, or result set with no explicit upper bound → add a `@performance` check regardless of depth level.
+
+**Failure recovery:** First test failure after a fix → re-trace before touching anything. Two consecutive failures on the same problem → invoke `/investigate-bug` before the next attempt. Never reapply the same change without a new hypothesis.
+
 ## Response modes
 
 Modes control response verbosity AND, for the saver modes, how aggressively Claude cuts tool and agent cost. They do NOT lower investigation, validation, or safety for the task's actual risk — a security issue still gets the full trace, just reported shorter.
@@ -66,6 +72,10 @@ Everything from `ferb`, plus:
 - On any objection, revise the plan without starting work.
 - Rationale: a single wasted iteration on a complex task costs more than the whole plan phase.
 
+### auto — adaptive
+
+Apply effort classification to select behavior: `light` → `surgical`; `normal` → `ferb`; `deep` → `blueprint` first, then `ferb` to execute. Default to `ferb` when uncertain. Escalate the behavior mode if scope expands beyond the initial assessment.
+
 ### When to pick what
 
 - **Light task (typo, label, one-line fix)** → `surgical` is cheapest.
@@ -99,6 +109,8 @@ For everything else, before editing any file:
 2. Trace the execution path from the trigger to the affected component.
 3. Identify what already exists that can be reused.
 4. Confirm the root cause before proposing a fix.
+5. Before referencing a method, CLI option, or behavior not already in context: grep or read it first. When evidence is incomplete, say so — "assuming X, not yet verified." Never present an assumption as a confirmed fact.
+6. For public functions, API responses, or event payloads: grep for callers before changing the signature or shape.
 
 Do not read a file name and assume you understand the code inside it.
 
@@ -107,7 +119,8 @@ Do not read a file name and assume you understand the code inside it.
 - **Find root causes.** Trace execution; do not patch symptoms.
 - **Reuse first.** Find existing components, abstractions, utilities, and patterns before adding new ones.
 - **Preserve contracts.** Do not change public interfaces, API responses, permissions, or observable behavior without explicit authorization.
-- **Minimum scope.** Do not add dependencies, schema changes, or refactors beyond the stated task.
+- **Minimum scope.** Do not add dependencies, schema changes, or refactors beyond the stated task. Report discovered out-of-scope problems — do not fix them without authorization. If a fix requires touching an out-of-scope file, surface the dependency before proceeding.
+- **Verify before asserting.** Grep or read before claiming a symbol or behavior exists. Label unverified claims.
 - **No cosmetic cleanup.** Do not reorganize unrelated code unless authorized.
 - **Test what you change.** Run or write tests for modified behavior. Label results as PASS, FAIL, NOT RUN, or BLOCKED.
 
@@ -120,6 +133,8 @@ Do not read a file name and assume you understand the code inside it.
 - [ ] No secrets, tokens, or credentials in code or committed files
 - [ ] Static analysis and linting clean (use the appropriate tool for the project's language)
 - [ ] Relevant tests passing
+- [ ] Result satisfies the stated requirement — tests passing is necessary but not sufficient; verify against acceptance criteria
+- [ ] Auth, database schema, API contract, or shared utility changes: `@reviewer` has checked the diff before commit
 
 ## Security rules
 
@@ -152,7 +167,7 @@ Label each finding:
 
 ## Specialized delegation
 
-Delegate to specialized agents when the task requires distinct expertise on an independent dimension and the benefit justifies the coordination cost. For localized or simple work, inspect directly.
+Delegate for specialized expertise and isolation value — not for target size. A 20-line auth flow warrants `@security-auth`; a 500-line utility with no sensitive surface does not. Decision factors: domain specialization the main session lacks, value of running independently without loading the target into main context, and coordination cost proportional to task risk.
 
 | Task | Agent / Skill |
 |------|--------------|
@@ -161,6 +176,8 @@ Delegate to specialized agents when the task requires distinct expertise on an i
 | Full security audit with specialists | `/sec-audit` |
 | Performance and query analysis | `@performance` |
 | Pre-commit change review | `@reviewer` |
+| Root cause analysis on a bug | `/investigate-bug` |
+| Behavior-preserving refactor | `/safe-refactor` |
 
 ## What not to do
 

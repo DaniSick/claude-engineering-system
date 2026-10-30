@@ -16,7 +16,23 @@
       "Bash(wc *)",
       "Bash(pwd)",
       "Bash(echo *)",
-      "Bash(which *)"
+      "Bash(which *)",
+      "Bash(php -l *)",
+      "Bash(./vendor/bin/phpstan *)",
+      "Bash(./vendor/bin/psalm *)",
+      "Bash(./vendor/bin/pest *)",
+      "Bash(./vendor/bin/phpunit *)",
+      "Bash(php artisan list*)",
+      "Bash(php artisan route:list*)",
+      "Bash(php artisan about)",
+      "Bash(php artisan inspire)",
+      "Bash(php artisan make:*)",
+      "Bash(composer validate)",
+      "Bash(composer show*)",
+      "Bash(composer diagnose)",
+      "Bash(npm run lint*)",
+      "Bash(npm run typecheck*)",
+      "Bash(npm run type-check*)"
     ]
   },
   "hooks": {

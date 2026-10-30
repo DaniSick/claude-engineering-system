@@ -81,3 +81,28 @@ TODO
 - `@security` — review [auth-related directory]
 - `@performance` — find redundant queries in [data access layer]
 - `@reviewer` — check the current diff before committing
+
+## Response mode
+
+<!-- Set a default mode for this project. Remove this section to rely on per-session selection.
+     Options: ninja | ferb | surgical | blueprint | explained | auto -->
+Response mode: auto
+
+## Common commands
+
+<!-- Replace placeholders with the actual commands for this project.
+     Claude reads these and uses them autonomously when running tests, lint, and static analysis. -->
+
+```bash
+# Run tests
+# e.g. ./vendor/bin/pest --filter=SomeTest
+
+# Static analysis
+# e.g. ./vendor/bin/phpstan analyse src/ --level=8
+
+# Lint / format check
+# e.g. ./vendor/bin/php-cs-fixer check src/ --dry-run
+
+# Start dev server
+# e.g. php artisan serve
+```
