@@ -243,24 +243,28 @@ fi
 
 case "${CES_BANNER:-off}" in
     full)
-        # Zones, not a gradient: rows 1-2 are the lit dome, 3-7 the bone face,
-        # 8-10 the jaw falling into shadow. Dark is reserved for what is
-        # genuinely occluded — under the brow, beneath the cheek, between teeth.
-        printf '%s\n' "${SL}    ▄▄█████████▄▄${R}"
-        printf '%s\n' "${SL}  ▄███████████████▄${R}"
-        printf '%s\n' "${SM} ▄█████████████████▄${R}"
-        printf '%s\n' "${SM}█████████████████████${R}"
-        printf '%s\n' "${SM}██${SD}▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀${SM}██${R}"
-        printf '%s\n' "${SM}██ ▐${V}███${SM}▌     ▐${V}███${SM}▌ ██${R}"
-        printf '%s\n' "${SM}██ ▐${V}███${SM}▌     ▐${V}███${SM}▌ ██${R}"
-        printf '%s\n' "${SM} ███▄▄   ${V}▄▀▄${SM}   ▄▄███${R}"
-        printf '%s\n' "${SD}  █████████████████${R}"
-        printf '%s\n' "${SM}   ██▌${SD}▐${SM}█▌${SD}▐${SM}█▌${SD}▐${SM}█▌${SD}▐${SM}██${R}"
+        # Every cell inside the silhouette is a full block. Spaces and half
+        # blocks let the terminal background through, which reads as grey
+        # patches sitting inside the skull — so shape is carried by colour
+        # changes between filled cells, never by gaps. Only the sockets and
+        # the nasal cavity are black; everything else is one of the three
+        # purples. Half blocks appear only on the outer edge, where the
+        # background showing through is the silhouette.
+        printf '%s\n' "${SL}   ▄▄▄▄▄▄▄▄▄${R}"
+        printf '%s\n' "${SL} █████████████${R}"
+        printf '%s\n' "${SM}███████████████${R}"
+        printf '%s\n' "${SD}███████████████${R}"
+        printf '%s\n' "${SM}██${V}████${SM}███${V}████${SM}██${R}"
+        printf '%s\n' "${SM}██${V}████${SM}███${V}████${SM}██${R}"
+        printf '%s\n' "${SM}███${V}██${SM}█████${V}██${SM}███${R}"
+        printf '%s\n' "${SM}██████${V}███${SM}██████${R}"
+        printf '%s\n' "${SD} █████████████${R}"
+        printf '%s\n' "${SM}  ██${SD}█${SM}██${SD}█${SM}██${SD}█${SM}██${R}"
         ;;
     small)
-        printf '%s\n' "${SL} ▄███████████▄${R}"
-        printf '%s\n' "${SM}█ ▐${V}███${SM}▌ ▐${V}███${SM}▌ █${R}"
-        printf '%s\n' "${SM} █▌${SD}▐${SM}█▌${SD}▐${SM}█▌${SD}▐${SM}█▌${SD}▐${SM}█${R}"
+        printf '%s\n' "${SL} ███████████${R}"
+        printf '%s\n' "${SM}█${V}███${SM}█████${V}███${SM}█${R}"
+        printf '%s\n' "${SM}█${SD}█${SM}██${SD}█${SM}███${SD}█${SM}██${SD}█${SM}█${R}"
         ;;
 esac
 
