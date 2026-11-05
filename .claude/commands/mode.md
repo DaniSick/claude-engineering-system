@@ -62,4 +62,8 @@ Engineering effort — investigation scope, validations, tests, security checks 
 
 ## Scope
 
-Current conversation only. The selection is not saved between sessions. To set a persistent default, add `Response mode: ferb` (or your preference) to the project's `CLAUDE.md`.
+Current conversation only. The selection is not saved between sessions.
+
+**To set a persistent global default**: add `Response mode: ferb` (or your preference) to the **Personal additions** section of `~/.claude/CLAUDE.md` — that block survives `bash scripts/setup.sh` redeployments.
+
+**To set a per-project default**: add the same line to the project's `CLAUDE.md`.

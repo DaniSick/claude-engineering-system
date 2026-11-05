@@ -187,3 +187,17 @@ Delegate for specialized expertise and isolation value — not for target size. 
 - Do not run destructive commands (delete, drop, reset, force-push) without explicit authorization.
 - Do not add schema migrations, external dependencies, or configuration changes beyond the task scope.
 - Do not merge unrelated changes into the same commit.
+
+---
+
+<!-- CES:PERSONAL_START -->
+## Personal additions
+
+_This section is preserved when you run `bash scripts/setup.sh`. Edit it freely — git pull + redeploy will never overwrite it._
+
+Suggested uses:
+- Set a default response mode (applies every session): `Response mode: ferb`
+- Add stack-specific rules, e.g. "This project uses Livewire; prefer wire:model over Alpine"
+- Override any principle above for your workflow
+
+<!-- CES:PERSONAL_END -->

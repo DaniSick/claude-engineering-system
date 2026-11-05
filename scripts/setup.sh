@@ -126,12 +126,53 @@ echo
 mkdir -p "${BACKUP_DIR}"
 
 # ── 1. Global CLAUDE.md ───────────────────────────────────────────────────────
+# If ~/.claude/CLAUDE.md already has a <!-- CES:PERSONAL_START --> block,
+# preserve it by injecting it into the freshly-deployed file.
+
+deploy_claude_md() {
+    local src="${REPO_DIR}/global/CLAUDE.md"
+    local dst="${CLAUDE_DIR}/CLAUDE.md"
+
+    # Extract personal block from existing destination (if any)
+    local personal_block=""
+    if [[ -f "$dst" ]]; then
+        personal_block="$(python3 - "$dst" <<'PY'
+import sys, re
+content = open(sys.argv[1]).read()
+m = re.search(r'<!-- CES:PERSONAL_START -->.*?<!-- CES:PERSONAL_END -->', content, re.DOTALL)
+if m:
+    block = m.group(0)
+    # Only preserve if user added content beyond the placeholder
+    placeholder_lines = {'<!-- CES:PERSONAL_START -->', '## Personal additions',
+        '_This section is preserved when you run `bash scripts/setup.sh`. Edit it freely — git pull + redeploy will never overwrite it._',
+        'Suggested uses:', '- Set a default response mode (applies every session): `Response mode: ferb`',
+        '- Add stack-specific rules, e.g. "This project uses Livewire; prefer wire:model over Alpine"',
+        '- Override any principle above for your workflow', '<!-- CES:PERSONAL_END -->'}
+    actual_lines = [l.strip() for l in block.splitlines() if l.strip() and l.strip() not in placeholder_lines]
+    if actual_lines:
+        print(block)
+PY
+)"
+    fi
+
+    deploy_file "$src" "$dst" "root"
+
+    # Inject personal block back if one existed
+    if [[ -n "$personal_block" && "$VERIFY_ONLY" == "false" ]]; then
+        python3 - "$dst" <<PY
+import sys, re
+dst = sys.argv[1]
+content = open(dst).read()
+block = """${personal_block}"""
+content = re.sub(r'<!-- CES:PERSONAL_START -->.*?<!-- CES:PERSONAL_END -->', block, content, flags=re.DOTALL)
+open(dst, 'w').write(content)
+PY
+        log "  personal additions block restored"
+    fi
+}
 
 log "1. Global CLAUDE.md"
-deploy_file \
-    "${REPO_DIR}/global/CLAUDE.md" \
-    "${CLAUDE_DIR}/CLAUDE.md" \
-    "root"
+deploy_claude_md
 echo
 
 # ── 2. Agents ────────────────────────────────────────────────────────────────
