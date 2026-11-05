@@ -1,0 +1,56 @@
+I read all 14 source files. Here's what I found, ordered by severity.
+
+## Critical
+
+**1. `routes/__init__.py:38-41` — unauthenticated admin user export**
+
+The other two legacy aliases pass `app.view_functions["admin.list_all_users"]` / `["admin.audit_log"]`, which resolve to the `require_role("admin")`-wrapped callables registered by `_protected`. This one passes `admin.export_users` — the raw, undecorated module function. `GET /admin/export-users` dumps every user's id, username, email, role, and active flag to any anonymous caller. The module docstring in `routes/admin.py:3-6` asserts this can't happen, which is probably why it was missed.
+
+```python
+app.add_url_rule("/admin/export-users", "legacy_export_users", admin.export_users, ...)
+#                                                              ^^^^^^^^^^^^^^^^^^ unwrapped
+```
+
+**2. `password_reset.py:22-24` — forgeable reset tokens → account takeover**
+
+`_derive()` is `sha256(f"{email}:{window}")[:32]` with no secret key. Every input is public, so anyone can compute a valid reset token for any email offline and call `POST /api/session/password-reset/confirm` to take over the account. The `issue_token` → user-exists check at line 29 is irrelevant; `complete_reset` re-derives through `verify_token`, which never consults the database for issuance. Tokens must be random and stored (or HMAC'd with `config.SECRET_KEY` plus a per-user value that changes on use, e.g. the current password hash).
+
+**3. `onboarding.py:53-55` + `serializers.py:9` — mass assignment → privilege escalation**
+
+`build_update(payload, serializers.user_fields())` uses `USER_FIELDS`, which contains `"role"` and `"email"` — unlike `WRITABLE_BY_OWNER` (`serializers.py:12`) used by the profile route. Any authenticated user can `POST /api/onboarding/profile {"role": "admin"}` and become an admin. The same path sets `email` directly, skipping the uniqueness check and `email_verified = 0` reset that `profile.py:62-72` enforces. This route should use `WRITABLE_BY_OWNER | {"username"}`.
+
+**4. `config.py:7` + `app.py:57` — debug error handler always on**
+
+`DEBUG = os.environ.get("APP_DEBUG", "false")` is a non-empty string, so it is truthy for every value including `"false"` and `"0"`. `if config.DEBUG:` therefore always passes, and every unhandled exception returns the exception message, full traceback, and the `g.user` object to the client. Fix: `os.environ.get("APP_DEBUG", "false").lower() in ("1", "true", "yes")`.
+
+**5. `upload.py:64-74` + `jobs/import_job.py:18` — path traversal / arbitrary file read**
+
+`create_batch_import` validates only `payload["manifest"]` (line 58); the per-entry `path` at line 65 goes unvalidated into the queue message at line 73. With no `"resolved"` key, the worker falls back to `os.path.join(config.IMPORT_ROOT, message["path"])` — and `os.path.join` discards the root when the second argument is absolute. `{"entries": [{"path": "/etc/passwd"}]}` or `"../../../etc/passwd"` gets read and its contents inserted into the caller's `contacts` rows. Call `validate_import_path` per entry and pass `resolved` like the single-import path does.
+
+## High
+
+**6. `transfer.py:74-97` — reversal replay creates money**
+
+Nothing marks a ledger entry as reversed and there is no idempotency key, so `POST /api/transfers/<id>/reverse` can be called repeatedly on the same entry. For a debit entry (`amount_cents = -amount`, written at line 61), each call does `balance - (-amount)`, crediting the account again. Transfer 100 between two accounts you own, then replay the reversal N times for unlimited balance. The reversal also only touches one side of the transfer — the counterparty account is never adjusted, so even a single legitimate reversal unbalances the ledger.
+
+**7. `transfer.py:46-67` — non-atomic transfer and balance TOCTOU**
+
+`db.connect()` sets `isolation_level=None` (`db.py:22`), so each `db.execute` autocommits. The debit (line 50), credit (line 54), and two ledger inserts are four independent commits: a crash or constraint failure mid-sequence leaves money destroyed or duplicated. Separately, the `balance_cents < amount` check at line 46 is not atomic with the debit, so concurrent requests can overdraw the same account. `reverse_transfer` correctly uses `db.transaction()` — `create_transfer` should too, with a guarded `UPDATE ... WHERE id = ? AND balance_cents >= ?`.
+
+**8. `auth.py:17-24` — home-grown password KDF**
+
+120k rounds of bare SHA-256 is fast on GPUs and has no memory hardness. The salt is also only mixed into the first digest (line 20-21); every subsequent round at line 23 is an unsalted `sha256(digest)` chain, so the whole construction is a plain iterated hash rather than a proper KDF. Use `bcrypt`, `scrypt`, or `argon2`; `hashlib.pbkdf2_hmac` is the minimum acceptable fallback.
+
+## Medium / Low
+
+**9. `users.py:29-35` and `users.py:41-48` — PII exposure in the member directory.** `detailed_user` returns `email` and `last_login_at` for every active user to any authenticated caller, enumerable via `?page=`. `search_users` (line 78) deliberately uses the narrower `public_user`, so the directory listing looks like an oversight. 
+
+**10. `session.py:46-49` — lockout DoS and weak throttle scope.** `_record_attempt` fires before credentials are checked and is never cleared on success, so 10 bad POSTs lock a known username out of logins for 15 minutes. Throttling is keyed on `identifier` only, so credential spraying across many usernames from one IP is unlimited. Key on IP as well, and clear the counter on successful login.
+
+**11. `jobs/import_job.py:65,72` — unbounded memory and size-check TOCTOU.** `os.path.getsize` is checked at line 65, but the file is reopened at line 32/37 — it can be swapped or grown in between. `_read_rows` also materializes the entire file (`json.load` / `list(csv.DictReader)`) before `MAX_ROWS` is applied at line 44, so the cap doesn't bound memory. Stream and count rows while reading.
+
+**12. `password_reset.py:39-41` — the previous-window branch is dead code.** For `window = current - 1`, `now - window*3600` is always ≥ 3600 and so is skipped by the `> RESET_TOKEN_TTL_SECONDS` check whenever `RESET_TOKEN_TTL_SECONDS <= WINDOW_SECONDS` (the default has both at 3600). Not exploitable — it shortens validity rather than extending it — but the grace window the loop is written to provide doesn't exist. Worth fixing alongside #2, since the token scheme needs rewriting anyway.
+
+**13. `profile.py:68-72` — changing email does not invalidate sessions.** `complete_reset` correctly clears sessions (`password_reset.py:60`); the email-change path doesn't, leaving an attacker who hijacked a session able to retain it after redirecting account recovery to their own address.
+
+The three I'd fix before anything else are #1, #2, and #3 — each is a direct, unauthenticated-or-trivial path to full account/admin compromise.

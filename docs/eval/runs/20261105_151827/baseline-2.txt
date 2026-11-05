@@ -1,0 +1,78 @@
+I read all 18 files (about 1,300 lines). I didn't run the app, so these findings come from reading the code. They're ordered by severity.
+
+## Critical
+
+**1. The legacy export route has no authentication** — `routes/__init__.py:36-41`
+Two of the legacy aliases reuse `app.view_functions[...]`, which is the version already wrapped by `require_role("admin")`. `/admin/export-users` instead registers the raw `admin.export_users` function, which has no check. Anyone, even without logging in, can call `GET /admin/export-users` and get every user's email, role and active flag. The comment in `admin.py:3-5` says every admin view is protected, but this route gets around that.
+*Fix:* use `app.view_functions["admin.export_users"]`.
+
+**2. Anyone can work out a password reset token** — `password_reset.py:22-24`
+The token is `sha256(f"{email}:{window}")[:32]` with no secret key in it. An attacker who knows a victim's email can compute the token and call `/api/session/password-reset/confirm`, which takes over any account, including admins. The tokens also aren't single-use (they stay valid for the whole window), and `password_reset.py:42` compares them with `==` instead of a constant-time check.
+*Fix:* use random tokens that are stored hashed, expire, and can be used once. At minimum, use an HMAC keyed with `SECRET_KEY` that also covers the current password hash.
+
+**3. Mass assignment in onboarding lets users make themselves admin** — `routes/onboarding.py:53-55` (with `serializers.py:3-10`)
+`complete_profile_step` passes the request body through `serializers.user_fields()`, and that list includes `role` and `email`. So `POST /api/onboarding/profile {"role":"admin"}` grants admin rights. Setting `email` this way also skips the uniqueness check and the `email_verified = 0` reset in `profile.change_email`. Combined with #2, an attacker can also take over an account by email.
+*Fix:* use an allow-list here that contains only the onboarding fields, such as `WRITABLE_BY_OWNER` plus `username`.
+
+**4. Transfer reversal can create money from nothing** — `routes/transfer.py:72-97`
+- Any ledger entry the caller owns can be reversed, as many times as they like. Nothing records that an entry was already reversed.
+- Reversing a debit entry (a negative amount) runs `balance - (-amount)`, which credits the source account again. The other side of the transfer is never touched. So: transfer $X to an accomplice, reverse the debit, and repeat. Each round creates $X.
+- Reversing a credit entry can push the balance below zero, because there's no balance check.
+*Fix:* reverse the transfer as one paired operation, mark it as reversed, and don't allow reversing it again.
+
+## High
+
+**5. Path traversal / arbitrary file read in batch import** — `routes/upload.py:57-73` → `jobs/import_job.py:14-18`
+`create_batch_import` validates only `manifest`. The `entries[].path` values are queued without any check. The worker then runs `os.path.join(IMPORT_ROOT, path)`, which accepts `../../etc/...`, and an absolute path like `/etc/passwd` replaces the root entirely. Any file the worker can read gets parsed and copied into the attacker's `contacts` rows.
+*Fix:* run `validate_import_path` on every entry and queue the resolved path. The worker should check again that the path is under the import root.
+
+**6. Transfers race each other (double spend / overdraft)** — `routes/transfer.py:46-67`
+The balance check and the four writes don't run inside `db.transaction()`, and the connection is in autocommit mode (`db.py:22`). Concurrent requests can each pass the `balance_cents < amount` check and overdraw the account. A failure partway through also leaves the ledger half-written.
+*Fix:* wrap the whole thing in `BEGIN IMMEDIATE`, and do the debit as a conditional update: `UPDATE ... SET balance = balance - ? WHERE id = ? AND balance >= ?`, then check the rowcount.
+
+**7. Debug mode is always on** — `config.py:7` → `app.py:57-68`
+`DEBUG` is the string `"false"`, and any non-empty string counts as true. So every unhandled exception returns the full traceback, the exception text and `g.user` (email, role) to the client.
+*Fix:* `DEBUG = os.environ.get("APP_DEBUG", "").lower() in ("1", "true", "yes")`.
+
+## Medium
+
+**8. Any logged-in user can read every user's personal data** — `routes/users.py:29-35` and `routes/users.py:41-48`
+`list_users` and `get_user` return `detailed_user`, which includes email, timezone, locale and `last_login_at`. Any authenticated member can page through the whole user base. These endpoints should use `public_user`.
+
+**9. Email can be changed without re-authenticating** — `routes/profile.py:51-73`
+Changing the email doesn't ask for the current password or confirm the change through the old address. Someone with a stolen session can switch the email and then reset the password to keep the account. Existing sessions also aren't revoked.
+
+**10. Login throttling only counts per username** — `routes/session.py:46-49`
+- Attempts are counted only per username, so password spraying across many accounts from one IP isn't limited.
+- Anyone can lock any user out for 15 minutes by sending 10 bad attempts for that username.
+
+## Low
+
+**11. Homemade password hashing** — `auth.py:17-24`
+Iterated SHA-256 is fast on GPUs. Use argon2id, bcrypt or scrypt instead.
+
+**12. Session tokens stored in plain text** — `auth.py:37-39`
+Anyone who can read the database can use live sessions. Store `sha256(token)` instead.
+
+**13. Reset tokens stored in plain text in the outbox** — `routes/session.py:124-128`
+
+**14. LIKE wildcards not escaped in search** — `routes/users.py:73-76`
+`%` and `_` in `q` act as wildcards, so a search like `q=%%` lists users.
+
+**15. Import worker can be crashed by bad input and has a race** — `jobs/import_job.py:34,44-55`
+- A JSON list of non-objects causes an `AttributeError` that isn't caught, so the worker crashes and the import stays stuck in "running".
+- There's also a time-of-check/time-of-use gap between validating the path and opening it, if symlinks in the import root can change in between.
+
+**16. Onboarding can be re-run at any time** — `routes/onboarding.py:34-65`
+There's no check on the current step or whether onboarding is already finished, which makes #3 usable by every existing user.
+
+## Checked and fine
+- SQL parameterisation is used everywhere. The dynamic `ORDER BY` and `SET` clauses only use column names from fixed allow-lists.
+- `validate_import_path`, used on single imports.
+- Cookie flags.
+- Login timing uses a dummy hash for unknown users.
+- Sessions are revoked on password reset and on deactivation.
+- The ownership checks on accounts, ledger and imports.
+- CSRF risk is mostly covered by SameSite=Lax cookies plus JSON-only bodies.
+
+The most urgent fixes are #1–#4: any one of them on its own leads to admin takeover, account takeover or unlimited money.

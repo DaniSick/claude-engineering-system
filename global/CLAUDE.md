@@ -167,6 +167,22 @@ Label each finding:
 - `HYPOTHESIS` — plausible but not yet traced
 - `NOT VERIFIED` — requires additional investigation
 
+**Compound-chain pass — required before the table is final.** A table is a list of independent
+rows, and that shape actively hides vulnerabilities that only exist in the interaction between
+findings. After listing findings, re-read them as a set and ask: does any low-severity finding
+supply a precondition another finding needs? Information disclosure plus a weak token is account
+takeover. A missing check plus a reachable path is privilege escalation.
+
+Report each chain as its own entry, severity set by the combination, not by its parts:
+
+> **Chain: #4 + #9 → account takeover.** #9 exposes every user's email to any authenticated
+> caller; #4 derives reset tokens from email alone. Individually P2 and P0; combined, any
+> member takes over any account including admins.
+
+Never downgrade or drop a finding because it looks minor in isolation — minor findings are the
+raw material of chains. If a finding seems too small to report, report it and say what it would
+need to become serious.
+
 ## Commit discipline
 
 - Conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`

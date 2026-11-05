@@ -35,7 +35,7 @@ for f in "$RUN_DIR"/*.txt; do
 
     has "$f" '^\|.*(evidence|file:line).*\|' && t=1 || t=0
     has "$f" '\b(CONFIRMED|HYPOTHESIS|NOT VERIFIED|NOT REPRODUCED)\b' && s=1 || s=0
-    has "$f" '(not a finding|not flagged|not broken|correctly (parameterized|check)|is the one function|found no bypass|does the (ownership|authorization) check correctly)' && n=1 || n=0
+    has "$f" '(not a finding|not flagged|not broken|checked and found (sound|safe)|correctly (parameterized|check|allowlists|uses)|is the one function|found no bypass|is solid|does the (ownership|authorization) check correctly)' && n=1 || n=0
     has "$f" '(NOT VERIFIED|did not sweep|check (the )?callers|can.?t verify|cannot verify|no callers|depends on (how|what) the|I can.?t verify|NOT RUN)' && c=1 || c=0
     has "$f" '([a-z_]+\.py:[0-9]+|line[s]? [0-9]+)' && l=1 || l=0
 

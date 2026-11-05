@@ -1,0 +1,65 @@
+I read all 18 Python files (about 1,300 lines). Issues are ordered by severity. I worked this out by reading the code only; I didn't run the app or write proof-of-concept exploits.
+
+## Critical
+
+**1. Anyone can forge password-reset tokens, so any account can be taken over** — `password_reset.py:22-24`
+`_derive()` builds the token as `sha256(f"{email}:{window}")[:32]` with no secret in it. Anyone who knows a user's email and the current hour can compute a valid token and call `POST /api/session/password-reset/confirm`.
+- The comparison at `password_reset.py:42` uses `==` rather than `hmac.compare_digest`.
+- Tokens aren't single-use, so one token works as many times as you like within its window.
+- Fix: derive tokens with an HMAC using `SECRET_KEY` and include the current password hash so a token dies once used, or store random tokens server-side.
+
+**2. Any user can make themselves admin through onboarding** — `routes/onboarding.py:53-54` and `serializers.py:3-10`
+`complete_profile_step` builds its UPDATE from `serializers.user_fields()`, and that list includes `role` and `email`. So `POST /api/onboarding/profile {"role":"admin"}` turns any logged-in user into an admin.
+- The same request can also change `email` without resetting `email_verified`, unlike `routes/profile.py:70`.
+- The endpoint isn't restricted to users who are still onboarding.
+- Fix: use an explicit allowlist of fields for this step (for example `display_name`, `timezone`, `locale`, `username`).
+
+**3. The full user export is open to anyone, with no login** — `routes/__init__.py:36-41`
+The legacy alias `/admin/export-users` is registered with the raw `admin.export_users` function. That function has no role check, because the check is only added inside `_protected`. As a result, anyone on the internet can download every user's id, username, email, role and active flag. The other two legacy aliases are fine because they use the wrapped `app.view_functions[...]`.
+
+**4. Reversing a transfer creates money and can be repeated** — `routes/transfer.py:72-97`
+- **Creates money:** `reverse_transfer` accepts any ledger entry the user owns. Reversing your own debit entry (`amount_cents = -X`) runs `balance - (-X)`, which adds X to your account. The destination account is never debited.
+- **Repeatable:** nothing records that an entry was already reversed, so the same call can be repeated forever.
+- **Reversal entries count too:** "reversal" entries can themselves be reversed.
+
+## High
+
+**5. Transfers can overdraw an account through a race (double-spend)** — `routes/transfer.py:34-67`
+The balance check (line 46) and the four writes (lines 50-67) aren't in a transaction, and the connection uses autocommit (`db.py:22`, `isolation_level=None`). Sending many transfers at the same moment overdraws the account. A failure partway through also leaves the books unbalanced.
+- Fix: put everything in `db.transaction()` and use `UPDATE ... SET balance_cents = balance_cents - ? WHERE id = ? AND balance_cents >= ?`, then check the number of rows changed.
+
+**6. Batch import lets users read any file on the server (path traversal)** — `routes/upload.py:58-73` and `jobs/import_job.py:18`
+The batch endpoint checks the `manifest` path but never checks the `entries` paths. In the worker, `os.path.join(config.IMPORT_ROOT, message["path"])` with an absolute path like `/etc/passwd` or `../../app/.env` ignores the import root. Any file the worker can read is then parsed and loaded into the attacker's `contacts` rows. Fix: run `validate_import_path` on every entry.
+
+**7. Error responses always include debug details in production** — `config.py:7` and `app.py:57`
+`DEBUG = os.environ.get("APP_DEBUG", "false")` is a string, and `"false"` counts as true in Python. So every unhandled exception returns the full traceback, the exception message (which can include SQL, file paths or secrets) and the current `g.user` (id, email, role). Fix: `DEBUG = os.environ.get("APP_DEBUG", "").lower() in ("1", "true", "yes")`.
+
+## Medium
+
+**8. Any logged-in user can see every user's email** — `routes/users.py:29-35` and `routes/users.py:41-48`
+`list_users` and `get_user` return `serializers.detailed_user` (email and `last_login_at`) to any authenticated user. Together with issue 1, this hands an attacker every email address they need for account takeover. Fix: use `public_user` for other users' records.
+
+**9. Users can import each other's files** — `routes/upload.py:22` and `validators.py:33-52`
+Import paths are only limited to `IMPORT_ROOT`, not to a per-user folder. Any user can queue an import of another user's uploaded file and pull its contents into their own contacts.
+
+**10. Login throttling lets attackers lock users out, and allows password spraying** — `routes/session.py:46-49`
+- **Lockout:** the limit is counted per username only, so anyone can lock out any user by sending 10 bad logins.
+- **Spraying:** there's no per-IP limit, so one common password can be tried across every username.
+- **Self-lockout:** successful logins also count toward the limit.
+
+**11. Reset flow ignores email verification, so a stolen session becomes a permanent takeover** — `routes/profile.py:53-73` and `password_reset.py:29`
+Changing the email needs no re-authentication and no confirmation link sent to the old address. The reset flow never checks `email_verified`. So someone with a stolen session can set their own email, run a password reset, and keep the account even after the original session is gone.
+
+## Low
+
+12. **Homemade password hashing** — `auth.py:17-24`: it uses iterated SHA-256 instead of a standard key-derivation function. Prefer `hashlib.scrypt`, argon2 or bcrypt.
+13. **Reset tokens stored in plain text** — `routes/session.py:123-128`: they sit in the `outbox` table, so database read access means account takeover. Session tokens are also stored in plain text (`auth.py:37-40`).
+14. **No rate limit on reset requests** — `routes/session.py:90-102`: this allows email bombing, and the response time differs depending on whether the email exists.
+15. **Admin actions aren't logged** — `routes/admin.py:53-61`: `deactivate_user` writes nothing to `audit_log`, and nothing else in the code writes to it either.
+16. **Crash on bad input** — `password_reset.py:36,51`: a non-string `email` raises an exception, which returns a 500 response with a traceback because of issue 7. `complete_reset` also looks up the user with the raw email instead of the normalized one.
+17. **Imports can get stuck** — `jobs/import_job.py:41-56`: a JSON file containing anything other than objects raises an `AttributeError` that isn't caught, so the import stays marked "running".
+18. **Wildcards in user search** — `routes/users.py:76`: `%` and `_` in the search term aren't escaped, so `q=%%` lists users.
+
+**Fix first:** issues 1–4, since each gives an attacker control of accounts, admin rights, all users' data or free money. Then 5–7.
+
+**Not a problem:** SQL `ORDER BY` and dynamic `SET` building (the column names are allowlisted), CSRF (cookies are `SameSite=Lax` and requests must be JSON), security headers, and the ownership checks on accounts, ledgers and imports.

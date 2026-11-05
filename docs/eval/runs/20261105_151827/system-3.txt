@@ -1,0 +1,40 @@
+Read all 18 files. Findings below, ordered by severity.
+
+## Critical
+
+| # | Finding | Evidence | Impact | Fix |
+|---|---------|----------|--------|-----|
+| 1 | **Unauthenticated admin user export.** `_protected()` wraps the view with `require_role("admin")` and registers *that wrapper* on the blueprint, but never rebinds the module global. The legacy alias passes the raw, undecorated `admin.export_users` object, so the auth check is absent on that route — unlike the two aliases above it, which pull the wrapped function out of `app.view_functions`. | `routes/__init__.py:36-41`, `routes/admin.py:18-21,39` | `GET /admin/export-users` with no cookie dumps id, username, email, role, active for every user. `CONFIRMED` | Register via `app.view_functions["admin.export_users"]`, like the other two aliases. |
+| 2 | **Password-reset tokens are forgeable — no secret in the derivation.** The token is `sha256(f"{email}:{window}")[:32]`, built only from public inputs. | `password_reset.py:22-24` | Anyone can compute a valid reset token for any email and take over any account, including admins, unauthenticated. `CONFIRMED` | Use `hmac.new(config.SECRET_KEY, ...)`, or store random single-use tokens. |
+| 3 | **Privilege escalation via onboarding mass assignment.** The onboarding step passes `serializers.user_fields()` as the writable allowlist; that tuple includes `role` and `email`. The sibling profile endpoint correctly uses `WRITABLE_BY_OWNER`. | `routes/onboarding.py:53-55`, `serializers.py:3-10` | Any authenticated user: `POST /api/onboarding/profile {"role":"admin"}` → admin. Also sets `email` directly, skipping the uniqueness check and the `email_verified = 0` reset in `profile.py:70`. `CONFIRMED` | Use `WRITABLE_BY_OWNER` (plus `username`, already validated separately). |
+| 4 | **Arbitrary file read via batch import.** `create_batch_import` validates only `manifest`; each entry's `path` is queued unvalidated. The worker's `_resolve` falls back to `os.path.join(IMPORT_ROOT, message["path"])` when no `resolved` key is present — which is exactly the batch case. `os.path.join` with an absolute path discards the root entirely. | `routes/upload.py:58,64-74`, `jobs/import_job.py:14-18,30-38` | `{"entries":[{"path":"/etc/passwd"}]}` or `"../../../.env"` → file contents parsed as CSV into the attacker's `contacts` rows. Suffix allowlist also bypassed. `CONFIRMED` | Call `validate_import_path` per entry and publish only the resolved path; make `_resolve` reject messages lacking `resolved`. |
+
+## High
+
+| # | Finding | Evidence | Impact | Fix |
+|---|---------|----------|--------|-----|
+| 5 | **Unlimited balance inflation via replayed reversal.** `reverse_transfer` has no idempotency check and no flag marking an entry reversed. It subtracts `amount_cents` from the account — for the debit leg (`-amount`), that is `balance - (-amount)` = a credit. It also never touches the counterparty account. | `routes/transfer.py:72-97` | Owner reverses their own outgoing ledger entry repeatedly; each call creates money from nothing. `CONFIRMED` | Mark entries reversed inside the transaction, reject already-reversed ones, and reverse both legs. |
+| 6 | **Debug tracebacks always enabled.** `DEBUG` is read as a raw string with default `"false"` — a non-empty string, so `if config.DEBUG:` is always true. | `config.py:7`, `app.py:57-68` | Every unhandled 500 returns the full traceback plus the session user object to the client. `CONFIRMED` | `DEBUG = os.environ.get("APP_DEBUG","false").lower() in ("1","true","yes")`. |
+
+## Medium
+
+| # | Finding | Evidence | Impact | Fix |
+|---|---------|----------|--------|-----|
+| 7 | **Transfer is not atomic.** Balance check and the four writes use bare `db.execute` on an `isolation_level=None` (autocommit) connection — no `db.transaction()`, unlike `reverse_transfer`. | `routes/transfer.py:46-67`, `db.py:22` | Concurrent requests both pass `balance_cents < amount` → overdraft; a mid-sequence failure leaves the debit applied without the credit. `CONFIRMED` | Wrap in `with db.transaction()` and do the balance check with a conditional `UPDATE ... WHERE balance_cents >= ?`. |
+| 8 | **Reset tokens are reusable and unthrottled.** Tokens are derived, never consumed, valid for the whole hour window; `/password-reset/confirm` has no rate limit (only `/login` does). | `password_reset.py:35-44`, `routes/session.py:105-120` | A leaked link stays valid after use; token space is also brute-forceable without a lockout. `CONFIRMED` | Single-use stored tokens + attempt throttling on confirm. |
+| 9 | **Weak password KDF.** A chained SHA-256 loop: the salt is mixed only into the first digest, every later round is `sha256(32 bytes)` with no salt and no memory hardness. | `auth.py:17-24` | GPU-friendly; far cheaper to crack than PBKDF2/scrypt/argon2 at equal cost. `CONFIRMED` | `hashlib.scrypt` or `argon2`; `pbkdf2_hmac` at minimum. |
+| 10 | **Non-constant-time token comparison.** `token == _derive(...)` while `verify_password` correctly uses `hmac.compare_digest`. | `password_reset.py:42` | Timing side channel on the reset token (moot until #2 is fixed, but will matter after). | `hmac.compare_digest`. |
+
+## Low
+
+| # | Finding | Evidence | Impact |
+|---|---------|----------|--------|
+| 11 | Login throttle keys on `identifier` only — no per-IP limit, so password spraying across many usernames is unthrottled; `login_attempts` rows are never pruned. | `routes/session.py:20-27,46` | Credential stuffing; unbounded table growth. `CONFIRMED` |
+| 12 | Batch entries aren't type-checked: `entry.get("path")` may be `None` or a non-string, reaching `os.path.join` in the worker. | `routes/upload.py:65`, `jobs/import_job.py:18` | Worker crash on a poisoned message. `CONFIRMED` |
+| 13 | Admin state changes (`deactivate_user`) write nothing to `audit_log`, though the table is read back at `admin.py:64`. | `routes/admin.py:53-61` | No attribution for privileged actions. `CONFIRMED` |
+| 14 | No `Strict-Transport-Security` header despite `secure=True` cookies. | `app.py:33-41` | Downgrade exposure on first request. `CONFIRMED` |
+| 15 | Every authenticated user can read every other user's email via the directory and by-id endpoints. | `routes/users.py:29-35,41-48`, `serializers.py:32-42` | May be intended for a members directory — flagging as a design question, not a defect. `NOT VERIFIED` |
+
+**Checked and clean:** SQL is parameterized throughout; the `ORDER BY` interpolation in `users.py:31` is allowlisted via `db.build_order_clause`; `validate_import_path` itself is sound (the `..` segment can't match `SAFE_SEGMENT`, plus a `realpath` containment check); `profile.py` uses the correct writable-field set; `transfer.py` ownership checks on source account and ledger reads are present; session cookies are `HttpOnly`/`Secure`/`SameSite=Lax`; no hardcoded secrets.
+
+**Verification status:** findings are confirmed by code reading. I could not execute the app to demonstrate them — the sandbox denied both writing a probe script and running `python3` against the target — so no finding here is runtime-proven (`NOT RUN`). Finding #1 in particular is worth a 30-second live check: `curl -i localhost:PORT/admin/export-users` with no cookie.
