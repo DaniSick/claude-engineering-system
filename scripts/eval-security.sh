@@ -39,13 +39,16 @@ for i in "${!args[@]}"; do
 done
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RUN_DIR="${REPO_DIR}/docs/eval/runs/${TIMESTAMP}"
-FIXTURE="${REPO_DIR}/docs/eval/fixture-blind.py"
-PROMPT="Review account_service.py for security issues. List each issue with its line number."
+# FIXTURE may be a single file or a directory. A directory is copied whole, so
+# multi-file fixtures — where a flaw only appears by connecting two files — work
+# the same way as the original single-file one.
+FIXTURE="${FIXTURE:-${REPO_DIR}/docs/eval/fixture-blind.py}"
+PROMPT="${PROMPT:-Review this codebase for security issues. List each issue with the file and line number.}"
 
 log() { echo "[eval] $*"; }
 err() { echo "[eval] ERROR: $*" >&2; exit 1; }
 
-[[ -f "$FIXTURE" ]] || err "fixture not found: $FIXTURE"
+[[ -e "$FIXTURE" ]] || err "fixture not found: $FIXTURE"
 command -v claude &>/dev/null || err "claude CLI not found on PATH"
 [[ -f "${HOME}/.claude/.credentials.json" ]] \
     || err "no credentials at ~/.claude/.credentials.json — baseline cannot authenticate"
@@ -59,10 +62,17 @@ mkdir -p "${ISO_HOME}/.claude"
 ln -sf "${HOME}/.claude/.credentials.json" "${ISO_HOME}/.claude/.credentials.json"
 [[ -f "${ISO_HOME}/.claude/CLAUDE.md" ]] && err "isolation broken: CLAUDE.md leaked into baseline home"
 
-# Fixture directory, named so the file looks like ordinary application code.
+# Target directory. A single-file fixture is renamed to look like ordinary
+# application code; a directory fixture is copied with its structure intact.
 TARGET="${WORK}/target"
 mkdir -p "$TARGET"
-cp "$FIXTURE" "${TARGET}/account_service.py"
+if [[ -d "$FIXTURE" ]]; then
+    cp -R "${FIXTURE}/." "$TARGET/"
+    log "fixture: $(basename "$FIXTURE")/ ($(find "$TARGET" -name '*.py' | wc -l) python files)"
+else
+    cp "$FIXTURE" "${TARGET}/account_service.py"
+    log "fixture: $(basename "$FIXTURE") (single file)"
+fi
 
 mkdir -p "$RUN_DIR"
 
@@ -120,7 +130,7 @@ cat > "${RUN_DIR}/META.md" <<EOF
 - Claude Code: $(claude --version 2>/dev/null | head -1)
 - Trials per condition: ${TRIALS}
 - Prompt: \`${PROMPT}\`
-- Fixture: \`docs/eval/fixture-blind.py\` (copied in as \`account_service.py\`)
+- Fixture: \`${FIXTURE#${REPO_DIR}/}\`
 - Baseline isolation: temporary HOME with only a credentials symlink
 
 Score each output against \`docs/eval/ANSWER-KEY.md\` and record recall (of 6),
