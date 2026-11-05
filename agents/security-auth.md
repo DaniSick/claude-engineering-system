@@ -69,7 +69,7 @@ Identify the project's auth model from the code before applying any framework-sp
 **Horizontal privilege escalation (IDOR/BOLA)**
 - Find URL parameters, query strings, and request body fields containing IDs or identifiers
 - For each: does the code verify the authenticated user owns or is authorized to access that resource?
-- Pattern: `Model::find($id)` without `where('user_id', auth()->id())` is suspicious
+- Pattern: a lookup by primary key taken from request input, with no ownership predicate scoping it to the authenticated principal, is suspicious
 - Indirect references: encoded or hashed IDs do not prevent IDOR if the mapping is not auth-scoped
 
 **Vertical privilege escalation**

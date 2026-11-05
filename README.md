@@ -47,7 +47,7 @@ it improves outcomes. Treat the design as reasoned, not proven.
 
 Current token footprint, measured by `scripts/measure-tokens.sh`:
 
-- Permanent per-turn cost (`CLAUDE.md`): **~3,786 tokens** (includes the six response modes and their strategic token-saving rules).
+- Permanent per-turn cost (`CLAUDE.md`): **~4,231 tokens** (includes the six response modes and their strategic token-saving rules).
 - Mean agent (loaded on invocation): ~1,560 tokens.
 - Mean skill (loaded on invocation): ~910 tokens.
 

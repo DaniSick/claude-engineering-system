@@ -24,11 +24,20 @@ Start at the lowest level that's reliable. Escalate when unknown dependencies su
 
 Modes control response verbosity AND, for the saver modes, how aggressively Claude cuts tool and agent cost. They do NOT lower investigation, validation, or safety for the task's actual risk — a security issue still gets the full trace, just reported shorter.
 
+**Mode precedence — safety triggers outrank mode restrictions.** When a mode says "never use agents" or "no exploration" and a safety trigger below says to invoke one or to check callers, the trigger wins. The mode still governs *how the result is reported* — terse stays terse. The triggers that always override a mode restriction:
+
+- The escalation triggers under "Effort proportional to problem" (auth, schema, API contracts, shared utilities).
+- The performance trigger (new ORM query in a loop, unbounded result set).
+- The `@reviewer` requirement in the quality checklist for auth, schema, API, or shared-utility diffs.
+- "Verify before asserting" and the caller sweep before changing a public signature.
+
+Resolve any apparent conflict this way; never silently drop a safety step to satisfy a verbosity rule.
+
 | Mode | Output | Reads | Agents | Updates | When to use |
 |------|--------|-------|--------|---------|-------------|
-| `ninja` | diff + 1-line outcome, zero prose | minimum, grep before Read | never | none during work | you read diffs; want pure signal |
-| `ferb` | result first, ≤3-line explanation | targeted, no re-reads | only `deep` tasks | at most one per task | the default saver |
-| `surgical` | just the change and why | one file, one zone, no exploration | never | none | known codebase, pinpoint fix |
+| `ninja` | diff + 1-line outcome, zero prose | minimum, grep before Read | only on a safety trigger | none during work | you read diffs; want pure signal |
+| `ferb` | result first, ≤3-line explanation | targeted, no re-reads | `deep` tasks + safety triggers | at most one per task | the default saver |
+| `surgical` | just the change and why | one file, one zone, no exploration | only on a safety trigger | none | known codebase, pinpoint fix |
 | `blueprint` | 3-5 bullet plan → wait OK → execute | plan phase only | plan phase only | after approval | multi-file, risky, or unclear |
 | `explained` | causes, alternatives, risks, steps | normal | when they add value | normal | learning, design decisions |
 | `auto` | adapts per task | adapts | adapts | adapts | mixed sessions |
@@ -38,12 +47,12 @@ Modes control response verbosity AND, for the saver modes, how aggressively Clau
 Behavioral rules in `ferb`, apply them all:
 
 1. **Act, don't announce.** No "voy a hacer X" or "let me check Y". The tool call speaks for itself.
-2. **No re-reading.** Files already shown in the context stay in context — do not Read them again. Edit directly from the latest known state.
+2. **No re-reading.** Files already shown in the context stay in context — do not Read them again. Edit directly from the latest known state. Exception: if the file may have changed since, or its content is no longer reliably in context, re-read it. "Verify before asserting" outranks this rule.
 3. **Locate before opening.** Use `grep` / `find` / `Explore` to pin the location in one call before reading a file end-to-end.
 4. **One update per task, not per step.** Silent while working. Announce only when direction changes, when blocked, or at the end.
 5. **No decision surveys.** When you have enough to decide, decide. Do not list 3 options with trade-offs — pick and go.
 6. **Batch questions at the end.** If several ambiguities surface, bundle them in one `AskUserQuestion` block, not scattered.
-7. **No agent for light/normal tasks.** Agents reload fresh prompts; use them only for `deep` tasks or an independent dimension (security, perf).
+7. **No agent for light/normal tasks** — unless a safety trigger fires (see Mode precedence). Agents reload fresh prompts; use them for `deep` tasks, an independent dimension (security, perf), or any triggered check.
 8. **No restating the user's prompt or re-explaining what the tool just output.** The user saw both.
 9. **No filler.** No "Perfecto", "Listo", "Ahora voy a", "Como puedes ver". Delete those words from your output.
 10. **Close with one line.** What changed, what's next (if anything). Nothing else.
@@ -59,22 +68,23 @@ Everything from `ferb`, plus:
 
 ### surgical — minimum reads, maximum focus
 
-- Target exactly one file or one zone. Do not explore sibling files unless the change breaks a direct caller you can prove by one grep.
-- No agents. No background tasks. No speculative tests.
+- Target exactly one file or one zone. Do not explore sibling files unless (a) the change breaks a direct caller you can prove by one grep, or (b) a non-negotiable rule requires a caller sweep or symbol check — those greps are always in scope.
+- No agents unless a safety trigger fires. No background tasks.
+- No *speculative* tests — do not write new tests for behavior you did not touch. Running the existing test for the code you changed is required, never speculative.
 - If scope creeps beyond the first identified change, stop and surface it instead of expanding silently.
 - Output: the edit, one sentence on why, test result. Done.
 
 ### blueprint — plan to avoid wasted work
 
 - First response: a plan in 3-5 bullets covering (a) what you'll change, (b) which files, (c) what you'll NOT touch, (d) what could go wrong.
-- Then wait for OK. Do not read files beyond what the plan needed, do not touch code.
+- Then wait for OK. Read only what is needed to write the plan itself; defer deeper reads to the execute phase. Do not touch code.
 - On OK, switch to `ferb` behavior to execute.
 - On any objection, revise the plan without starting work.
 - Rationale: a single wasted iteration on a complex task costs more than the whole plan phase.
 
 ### auto — adaptive
 
-Apply effort classification to select behavior: `light` → `surgical`; `normal` → `ferb`; `deep` → `blueprint` first, then `ferb` to execute. Default to `ferb` when uncertain. Escalate the behavior mode if scope expands beyond the initial assessment.
+Classify by the escalation and performance triggers first — not by file count or line count — then map: `light` → `surgical`; `normal` → `ferb`; `deep` → `blueprint` first, then `ferb` to execute. A one-line auth change is `deep` and routes to `blueprint`, however small it looks. Default to `ferb` when uncertain. Escalate the behavior mode if scope expands beyond the initial assessment.
 
 ### When to pick what
 

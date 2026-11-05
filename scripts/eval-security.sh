@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# eval-security.sh — A/B the system against a blind security fixture.
+#
+# Usage:
+#   bash scripts/eval-security.sh [TRIALS]      # default 3 trials per condition
+#
+# Conditions
+#   baseline  — an isolated HOME containing only a symlink to the existing
+#               credentials. No global CLAUDE.md, no agents, no skills.
+#   system    — the real HOME, with this system deployed.
+#
+# Both conditions get the identical prompt and the identical fixture, so the
+# only variable is whether ~/.claude/ configuration is present.
+#
+# Outputs land in docs/eval/runs/<timestamp>/ for scoring against ANSWER-KEY.md.
+# Scoring is manual and deliberately so: judging whether a report names a
+# mechanism or hand-waves at a category is not reliably automatable.
+#
+# Note: --bare would be the natural isolation flag, but it accepts only
+# ANTHROPIC_API_KEY and refuses OAuth, so it is unusable on an OAuth login.
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TRIALS="${1:-3}"
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+RUN_DIR="${REPO_DIR}/docs/eval/runs/${TIMESTAMP}"
+FIXTURE="${REPO_DIR}/docs/eval/fixture-blind.py"
+PROMPT="Review account_service.py for security issues. List each issue with its line number."
+
+log() { echo "[eval] $*"; }
+err() { echo "[eval] ERROR: $*" >&2; exit 1; }
+
+[[ -f "$FIXTURE" ]] || err "fixture not found: $FIXTURE"
+command -v claude &>/dev/null || err "claude CLI not found on PATH"
+[[ -f "${HOME}/.claude/.credentials.json" ]] \
+    || err "no credentials at ~/.claude/.credentials.json — baseline cannot authenticate"
+
+WORK="$(mktemp -d)"
+trap '[[ -n "${WORK:-}" ]] && rm -rf "$WORK"' EXIT
+
+# Isolated home: credentials only, by symlink. The secret is never copied.
+ISO_HOME="${WORK}/iso-home"
+mkdir -p "${ISO_HOME}/.claude"
+ln -sf "${HOME}/.claude/.credentials.json" "${ISO_HOME}/.claude/.credentials.json"
+[[ -f "${ISO_HOME}/.claude/CLAUDE.md" ]] && err "isolation broken: CLAUDE.md leaked into baseline home"
+
+# Fixture directory, named so the file looks like ordinary application code.
+TARGET="${WORK}/target"
+mkdir -p "$TARGET"
+cp "$FIXTURE" "${TARGET}/account_service.py"
+
+mkdir -p "$RUN_DIR"
+
+log "trials per condition: ${TRIALS}"
+log "output: ${RUN_DIR}"
+log "prompt: ${PROMPT}"
+echo
+
+run_one() {
+    local condition="$1" trial="$2" home_dir="$3"
+    local out="${RUN_DIR}/${condition}-${trial}.txt"
+    local started elapsed
+    started=$(date +%s)
+
+    if ( cd "$TARGET" && HOME="$home_dir" timeout 300 claude -p "$PROMPT" ) \
+        > "$out" 2> "${RUN_DIR}/${condition}-${trial}.err"; then
+        elapsed=$(( $(date +%s) - started ))
+        log "  ${condition} trial ${trial}: ok (${elapsed}s, $(wc -l < "$out") lines)"
+    else
+        elapsed=$(( $(date +%s) - started ))
+        log "  ${condition} trial ${trial}: FAILED after ${elapsed}s — see ${condition}-${trial}.err"
+    fi
+}
+
+log "Condition: baseline (no system configuration)"
+for i in $(seq 1 "$TRIALS"); do
+    run_one baseline "$i" "$ISO_HOME"
+done
+echo
+
+log "Condition: system (configuration deployed)"
+for i in $(seq 1 "$TRIALS"); do
+    run_one system "$i" "$HOME"
+done
+echo
+
+cat > "${RUN_DIR}/META.md" <<EOF
+# Run ${TIMESTAMP}
+
+- Claude Code: $(claude --version 2>/dev/null | head -1)
+- Trials per condition: ${TRIALS}
+- Prompt: \`${PROMPT}\`
+- Fixture: \`docs/eval/fixture-blind.py\` (copied in as \`account_service.py\`)
+- Baseline isolation: temporary HOME with only a credentials symlink
+
+Score each output against \`docs/eval/ANSWER-KEY.md\` and record recall (of 6),
+false positives (of 4 traps), and whether findings cite line numbers.
+EOF
+
+log "Done. Score the outputs against docs/eval/ANSWER-KEY.md"

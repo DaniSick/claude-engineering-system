@@ -23,17 +23,27 @@ When given a module or endpoint to audit, read the entry points first:
 
 For targeted or narrow-scope questions, proceed to direct analysis below. For broad or multi-surface audits, use `/sec-audit` — it orchestrates specialist agents from the main session.
 
-## Direct analysis (for narrow scope or targeted questions)
+## Direct analysis (narrow scope only)
 
-When acting without specialists, investigate:
+For a single function, endpoint, or a question with one clear surface, analyze it yourself
+rather than dispatching specialists. This pass is deliberately shallower than a specialist's —
+its job is to answer the narrow question or to determine that a specialist is warranted.
 
-**Authorization on every state change** — trace each operation that modifies data or reads sensitive records. Verify that a caller identity and permission check runs before the operation, not after.
+Trace, in this order:
 
-**Input reaching dangerous operations** — follow user-controlled values to queries, file paths, system calls, template rendering, redirects. Verify parameterization, escaping, or rejection appropriate to the operation.
+1. **Trust boundary** — where does untrusted input enter this code, and what is it trusted to do?
+2. **Authorization before effect** — does a permission check run before each state change or
+   sensitive read, scoped to the authenticated principal? An unused caller-identity parameter
+   is the signature of a missing check.
+3. **Input to dangerous sink** — follow user-controlled values to queries, file paths, system
+   calls, template rendering, and redirects. Verify parameterization or rejection at each.
+4. **What leaves** — responses, errors, and logs, for fields or secrets the caller should not receive.
 
-**Data exposure** — check API responses, error messages, and logs for fields the caller should not receive.
-
-**Secrets in code** — check for hardcoded credentials, tokens, or private keys in source, config, and example files.
+**Escalate to a specialist instead of continuing** when: the target spans more than one surface;
+the question involves OAuth, JWT, or session mechanics (`@security-auth`); encoding correctness
+across output contexts (`@security-injection`); or an interaction between individually-minor
+findings (`@security-logic`). Say which specialist and why rather than producing a thin version
+of their analysis.
 
 ## Output format
 
@@ -49,19 +59,11 @@ Status:
 - `NOT REPRODUCED` — attempted to validate, not confirmed
 - `NOT VERIFIABLE` — insufficient access or information to determine
 
-## Coverage matrix (for full audits)
+## Coverage reporting
 
-| Surface | Agent | Coverage |
-|---------|-------|---------|
-| Authentication | @security-auth | Evaluated / Findings / Partial / N/A / Not evaluated |
-| Authorization | @security-auth | |
-| Injection | @security-injection | |
-| Input validation | @security-injection | |
-| Web/API security | @security-web | |
-| File handling | @security-data | |
-| Secrets / crypto | @security-data | |
-| Business logic | @security-logic | |
-| Dependencies | @security-deps | |
+Full audits report a coverage matrix; `/sec-audit` owns its canonical form. When synthesizing
+specialist findings here, use that matrix rather than restating a coarser copy — and state
+explicitly which surfaces went unexamined.
 
 ## Constraints
 

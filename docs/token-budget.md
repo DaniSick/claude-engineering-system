@@ -22,15 +22,21 @@ Run `bash scripts/measure-tokens.sh` for an up-to-date count. The reference figu
 
 | Surface | Lines | Bytes | Approx tokens |
 |---------|------:|------:|--------------:|
-| `global/CLAUDE.md` | 204 | 13.3 KB | ~3,786 |
-| Mean `agents/*.md` | 100 | 5.5 KB | ~1,564 |
+| `global/CLAUDE.md` | 219 | 14.8 KB | ~4,231 |
+| Mean `agents/*.md` | 100 | 5.5 KB | ~1,575 |
 | Largest agent (`security-web.md`) | 145 | 8.0 KB | ~2,276 |
 | Mean `.claude/commands/*.md` | 75 | 3.4 KB | ~969 |
 | Largest skill (`ui-review.md`) | 124 | 6.4 KB | ~1,818 |
 
-Permanent per-turn cost: **~3,786 tokens** from the global principles file.
+Permanent per-turn cost: **~4,231 tokens** from the global principles file.
 
 _Last measured: 2026-11-05 with `scripts/measure-tokens.sh` (bytes/3.5 heuristic). Re-run after any edit to `global/CLAUDE.md` — this table goes stale silently._
+
+The jump from ~3,786 to ~4,231 (+445) paid for the **Mode precedence** rule, which resolves six
+documented contradictions between the response modes and the safety triggers. Contradictory
+instructions are a known degradation mode — the model resolves them arbitrarily — so the trade
+is judged worthwhile. Like everything else in this document's benefit column, that judgment is
+reasoned, not measured.
 
 A session that invokes two agents and one skill once each loads an additional ~4,000 tokens, but only on the turns where they fire.
 
@@ -40,7 +46,7 @@ The permanent cost went up (+880 tokens vs. 0.2.0) because `global/CLAUDE.md` no
 
 The system does not reduce input tokens compared to a blank Claude Code session — in fact, it adds ~1,300 permanent tokens. The savings are indirect:
 
-1. **Fewer wasted turns.** The global principles file tells the model to detect the stack, trace root causes, and reuse existing code before writing new code. This is intended to cut the common failure mode where the model asks obvious questions, scaffolds code that already exists, or edits the wrong file. A wasted turn in a mid-sized repo typically costs several thousand input tokens — enough that preventing one pays for the fixed ~3,786. **This break-even has not been measured on this system; it is the design rationale, not a result.** See "Validation status" below.
+1. **Fewer wasted turns.** The global principles file tells the model to detect the stack, trace root causes, and reuse existing code before writing new code. This is intended to cut the common failure mode where the model asks obvious questions, scaffolds code that already exists, or edits the wrong file. A wasted turn in a mid-sized repo typically costs several thousand input tokens — enough that preventing one pays for the fixed ~4,231. **This break-even has not been measured on this system; it is the design rationale, not a result.** See "Validation status" below.
 2. **Narrow agents instead of a wide context.** The specialized security and performance agents run with their own small prompt and read only the files relevant to one dimension. The alternative — asking the main session to do a security audit — pulls much more code into the main context and keeps it there for the rest of the conversation.
 3. **Saver response modes with strategic rules, not just terse text.** The modes `ninja`, `ferb`, `surgical`, and `blueprint` each add concrete rules: no re-reading files in context, `grep`/`find` to locate before opening, no decision surveys, no agents for light or normal tasks, one update per task instead of per step, no filler words. Those rules cut both input and output tokens on every turn. `blueprint` additionally caps the cost of multi-file tasks by forcing a 3-5 bullet plan before any edit, which prevents the expensive case of discovering mid-execution that you were heading the wrong way.
 4. **Read-only agents.** `architect`, `performance`, `reviewer`, and the `security-*` family cannot write files. The harness can and does short-circuit them when their analysis is enough, instead of letting a long edit cycle run.
@@ -61,7 +67,7 @@ If you want exact Claude tokenization, run the Anthropic `count_tokens` API on e
 
 ## When this system is a net cost
 
-- One-off questions ("what does `uniq -c` do?"). The 3,786 tokens are wasted.
+- One-off questions ("what does `uniq -c` do?"). The 4,231 tokens are wasted.
 - Projects with a very small CLAUDE.md already present. The global file duplicates intent.
 - Sessions that never invoke an agent or skill.
 

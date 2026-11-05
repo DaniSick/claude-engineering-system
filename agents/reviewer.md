@@ -16,7 +16,7 @@ You are a read-only code reviewer. Your role is to find concrete problems in the
 ### Regressions
 - Changes to a method's behavior that break callers not visible in the diff
 - Removed or renamed public methods, constants, or config keys that other code depends on
-- Changed Eloquent relationships that break eager loading in other files
+- Changed ORM relationships or associations that break eager loading elsewhere
 - Validation rule changes that break existing form submissions
 
 ### Contract violations
