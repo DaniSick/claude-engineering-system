@@ -208,20 +208,28 @@ fi
 # This is a persistent bar, not a one-time splash — it redraws every update and
 # holds its rows permanently. That is the trade for having it render at all.
 
+# Both variants are laid out on a fixed grid — 19 columns for full, 13 for
+# small — so the skull stays symmetric. Colour spans are inserted inside the
+# row without changing its visible width; miscounting one row is what makes
+# this kind of art look crooked.
+
 case "${CES_BANNER:-off}" in
     full)
-        printf '%s\n' "${A}     ▄▄▄▄▄▄▄▄▄${R}"
-        printf '%s\n' "${A}   ▄█▀▀▀▀▀▀▀▀▀█▄${R}"
-        printf '%s\n' "${A}  ██   ${E}▄${A}   ${E}▄${A}   ██${R}"
-        printf '%s\n' "${A}  ██  ${E}▀▀${A}   ${E}▀▀${A}  ██${R}"
-        printf '%s\n' "${A}  ██▄▄▄▄▄▄▄▄▄▄▄██${R}"
-        printf '%s\n' "${A}  █ ▀▄▀▄▀▄▀▄▀▄▀ █${R}"
-        printf '%s\n' "${A}   ▀▀▄▄▄▄▄▄▄▄▄▀▀${R}"
+        printf '%s\n' "${A}     ▄▄▄███████▄▄▄${R}"
+        printf '%s\n' "${A}   ▄███████████████▄${R}"
+        printf '%s\n' "${A}  ███████████████████${R}"
+        printf '%s\n' "${A}  ███▀▀▀▀▀▀▀▀▀▀▀▀▀███${R}"
+        printf '%s\n' "${A}  ██ ▜█▄       ▄█▛ ██${R}"
+        printf '%s\n' "${A}  ██  ▐${E}█${A}▌     ▐${E}█${A}▌  ██${R}"
+        printf '%s\n' "${A}  ███▄    ▄▀▄    ▄███${R}"
+        printf '%s\n' "${A}   █████▄▄▄▄▄▄▄█████${R}"
+        printf '%s\n' "${A}    ██▌█▌█▌█▌█▌█▌██${R}"
+        printf '%s\n' "${A}      ▀▀ ▀▀ ▀▀ ▀▀${R}"
         ;;
     small)
-        printf '%s\n' "${A}  ▄▀▀▀▀▀▀▀▄${R}"
-        printf '%s\n' "${A}  █ ${E}▀${A}   ${E}▀${A} █${R}"
-        printf '%s\n' "${A}  █▄▀▄▀▄▀▄▀█${R}"
+        printf '%s\n' "${A}    ▄█████████▄${R}"
+        printf '%s\n' "${A}   █▀ ▐${E}█${A}▌ ▐${E}█${A}▌ ▀█${R}"
+        printf '%s\n' "${A}    █▌█▌█▌█▌█▌█${R}"
         ;;
 esac
 
