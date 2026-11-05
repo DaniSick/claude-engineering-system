@@ -186,6 +186,7 @@ Delegate for specialized expertise and isolation value — not for target size. 
 | Full security audit with specialists | `/sec-audit` |
 | Performance and query analysis | `@performance` |
 | Pre-commit change review | `@reviewer` |
+| Do the tests actually verify behavior | `@test-quality` |
 | Root cause analysis on a bug | `/investigate-bug` |
 | Behavior-preserving refactor | `/safe-refactor` |
 

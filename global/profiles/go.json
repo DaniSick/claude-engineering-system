@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build ./...)",
+      "Bash(go vet ./...)",
+      "Bash(go test ./...)",
+      "Bash(go test -run *)",
+      "Bash(go fmt ./...)",
+      "Bash(gofmt -l *)",
+      "Bash(go list*)",
+      "Bash(go mod verify)",
+      "Bash(go mod tidy -diff)",
+      "Bash(golangci-lint run*)",
+      "Bash(govulncheck ./...)",
+      "Bash(staticcheck ./...)"
+    ]
+  }
+}

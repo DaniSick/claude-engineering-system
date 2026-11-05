@@ -77,9 +77,25 @@ Response modes (`/mode <name>`): `ninja` (max compression), `ferb` (strategic sa
 git clone git@github.com:DaniSick/claude-engineering-system.git ~/claude-engineering-system
 cd ~/claude-engineering-system
 bash scripts/doctor.sh       # verify your environment first
-bash scripts/setup.sh        # deploy to ~/.claude/
+bash scripts/setup.sh --init # pick your stacks, then deploy
 bash scripts/setup.sh --verify
 ```
+
+### Stack profiles
+
+Base permissions are stack-neutral — `git`, `ls`, `grep`, `find`, `cat` and similar
+inspection commands that are safe in any project. Anything language-specific is opt-in,
+so a Go developer does not inherit a PHP allowlist.
+
+```bash
+bash scripts/setup.sh --init                    # interactive picker
+bash scripts/setup.sh --profile node,python     # or name them directly
+bash scripts/setup.sh --help                    # list available profiles
+```
+
+Available: `php-laravel`, `node`, `python`, `go`, `rust`. Profiles are additive and
+re-runnable — add another stack later without losing the first. To add your own, drop a
+JSON file with a `permissions.allow` array into `global/profiles/`.
 
 ## Update
 
@@ -107,6 +123,7 @@ Available in every Claude Code session as read-only specialists. They cannot mod
 @architect           — module structure, dependency boundaries, coupling
 @performance         — N+1 queries, redundant work, cache misses
 @reviewer            — pre-commit change review
+@test-quality        — tests that pass without verifying behavior
 @security            — security audit orchestrator
 @security-auth       — authN, authZ, session, multi-tenancy
 @security-injection  — SQL/NoSQL/command injection, XSS, SSRF, path traversal

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile *)",
+      "Bash(python3 -m py_compile *)",
+      "Bash(pytest *)",
+      "Bash(python -m pytest *)",
+      "Bash(mypy *)",
+      "Bash(ruff check *)",
+      "Bash(ruff format --check *)",
+      "Bash(black --check *)",
+      "Bash(flake8 *)",
+      "Bash(pylint *)",
+      "Bash(pip list*)",
+      "Bash(pip show*)",
+      "Bash(pip-audit*)",
+      "Bash(poetry check)",
+      "Bash(poetry show*)"
+    ]
+  }
+}

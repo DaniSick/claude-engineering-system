@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint*)",
+      "Bash(npm run typecheck*)",
+      "Bash(npm run type-check*)",
+      "Bash(npm run test*)",
+      "Bash(npm audit*)",
+      "Bash(npm ls*)",
+      "Bash(pnpm lint*)",
+      "Bash(pnpm typecheck*)",
+      "Bash(pnpm test*)",
+      "Bash(pnpm audit*)",
+      "Bash(yarn lint*)",
+      "Bash(yarn typecheck*)",
+      "Bash(npx tsc --noEmit*)",
+      "Bash(npx eslint *)",
+      "Bash(npx prettier --check *)"
+    ]
+  }
+}

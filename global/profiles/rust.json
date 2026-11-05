@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check*)",
+      "Bash(cargo build*)",
+      "Bash(cargo test*)",
+      "Bash(cargo clippy*)",
+      "Bash(cargo fmt --check)",
+      "Bash(cargo tree*)",
+      "Bash(cargo audit*)",
+      "Bash(cargo metadata*)",
+      "Bash(rustc --version)"
+    ]
+  }
+}

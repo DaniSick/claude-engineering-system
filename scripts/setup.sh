@@ -100,17 +100,68 @@ PY
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 
-for arg in "$@"; do
-    case "$arg" in
+PROFILES=""
+RUN_INIT=false
+
+_args=("$@")
+for _i in "${!_args[@]}"; do
+    case "${_args[$_i]}" in
         --verify) VERIFY_ONLY=true ;;
+        --init)   RUN_INIT=true ;;
+        --profile)
+            PROFILES="${_args[$((_i+1))]:-}"
+            [[ -n "$PROFILES" ]] || err "--profile needs a value (see --help)" ;;
         --help)
-            echo "Usage: bash scripts/setup.sh [--verify] [--help]"
-            echo "  --verify   check deployment status without making changes"
-            echo "  --help     show this help"
+            cat <<'USAGE'
+Usage: bash scripts/setup.sh [options]
+
+  --verify            check deployment status without making changes
+  --profile <names>   also apply stack permission profiles (comma-separated)
+  --init              choose profiles interactively, then deploy
+  --help              show this help
+
+Base permissions are stack-neutral (git, ls, grep, find, cat, ...).
+Stack-specific commands live in profiles and are opt-in:
+
+USAGE
+            for p in "$(dirname "${BASH_SOURCE[0]}")/../global/profiles/"*.json; do
+                [[ -f "$p" ]] && echo "  $(basename "$p" .json)"
+            done
+            echo
+            echo "Example: bash scripts/setup.sh --profile node,python"
             exit 0 ;;
-        *) warn "Unknown argument: $arg" ;;
+        [!-]*) : ;;
+        *) warn "Unknown argument: ${_args[$_i]}" ;;
     esac
 done
+
+available_profiles() {
+    for p in "${REPO_DIR}/global/profiles/"*.json; do
+        [[ -f "$p" ]] && basename "$p" .json
+    done
+}
+
+if [[ "$RUN_INIT" == "true" ]]; then
+    echo "Which stacks do you work in? Permissions for these get added to the"
+    echo "stack-neutral base. You can re-run with --profile later."
+    echo
+    mapfile -t _avail < <(available_profiles)
+    for _n in "${!_avail[@]}"; do
+        echo "  $((_n+1))) ${_avail[$_n]}"
+    done
+    echo
+    read -r -p "Numbers, comma-separated (empty = base only): " _picked
+    _sel=()
+    IFS=',' read -ra _nums <<< "${_picked// /}"
+    for _num in "${_nums[@]}"; do
+        [[ "$_num" =~ ^[0-9]+$ ]] || continue
+        _idx=$((_num - 1))
+        [[ -n "${_avail[$_idx]:-}" ]] && _sel+=("${_avail[$_idx]}")
+    done
+    PROFILES="$(IFS=,; echo "${_sel[*]}")"
+    [[ -n "$PROFILES" ]] && log "Selected profiles: ${PROFILES}" || log "Base permissions only"
+    echo
+fi
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
 
@@ -232,6 +283,35 @@ log "5. settings.json  (permissions + hooks merge)"
 
 SETTINGS="${CLAUDE_DIR}/settings.json"
 REF_SETTINGS="${REPO_DIR}/global/settings.json"
+
+# Merge any selected stack profiles into the reference before applying it.
+if [[ -n "$PROFILES" ]]; then
+    MERGED_REF="$(mktemp)"
+    trap '[[ -n "${MERGED_REF:-}" ]] && rm -f "$MERGED_REF"' EXIT
+    _profile_paths=()
+    IFS=',' read -ra _plist <<< "$PROFILES"
+    for _p in "${_plist[@]}"; do
+        _pp="${REPO_DIR}/global/profiles/${_p}.json"
+        [[ -f "$_pp" ]] || err "unknown profile '${_p}' — run --help to list available profiles"
+        _profile_paths+=("$_pp")
+    done
+
+    python3 - "$REF_SETTINGS" "$MERGED_REF" "${_profile_paths[@]}" <<'PY'
+import json, sys
+base_path, out_path, *profiles = sys.argv[1:]
+with open(base_path) as f:
+    base = json.load(f)
+allow = set(base.get("permissions", {}).get("allow", []))
+for p in profiles:
+    with open(p) as f:
+        allow |= set(json.load(f).get("permissions", {}).get("allow", []))
+base.setdefault("permissions", {})["allow"] = sorted(allow)
+with open(out_path, "w") as f:
+    json.dump(base, f, indent=2)
+PY
+    REF_SETTINGS="$MERGED_REF"
+    log "  profiles applied: ${PROFILES}"
+fi
 
 if [[ "$VERIFY_ONLY" == "true" ]]; then
     python3 - "$SETTINGS" "$REF_SETTINGS" <<'PY'

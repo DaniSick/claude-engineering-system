@@ -2,12 +2,17 @@
 # eval-security.sh — A/B the system against a blind security fixture.
 #
 # Usage:
-#   bash scripts/eval-security.sh [TRIALS]      # default 3 trials per condition
+#   bash scripts/eval-security.sh [TRIALS]              # 2 conditions
+#   bash scripts/eval-security.sh [TRIALS] --variant F  # adds a third
 #
 # Conditions
 #   baseline  — an isolated HOME containing only a symlink to the existing
 #               credentials. No global CLAUDE.md, no agents, no skills.
 #   system    — the real HOME, with this system deployed.
+#   variant   — an isolated HOME holding credentials plus the CLAUDE.md given
+#               by --variant. Used for ablations: which sections are actually
+#               load-bearing. Agents and skills are absent, matching baseline,
+#               so the only difference from baseline is the file under test.
 #
 # Both conditions get the identical prompt and the identical fixture, so the
 # only variable is whether ~/.claude/ configuration is present.
@@ -22,7 +27,16 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TRIALS="${1:-3}"
+TRIALS=3
+VARIANT=""
+
+args=("$@")
+for i in "${!args[@]}"; do
+    case "${args[$i]}" in
+        --variant) VARIANT="${args[$((i+1))]:-}" ;;
+        [0-9]*)    TRIALS="${args[$i]}" ;;
+    esac
+done
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RUN_DIR="${REPO_DIR}/docs/eval/runs/${TIMESTAMP}"
 FIXTURE="${REPO_DIR}/docs/eval/fixture-blind.py"
@@ -84,6 +98,21 @@ for i in $(seq 1 "$TRIALS"); do
     run_one system "$i" "$HOME"
 done
 echo
+
+if [[ -n "$VARIANT" ]]; then
+    [[ -f "$VARIANT" ]] || err "variant file not found: $VARIANT"
+    VAR_HOME="${WORK}/var-home"
+    mkdir -p "${VAR_HOME}/.claude"
+    ln -sf "${HOME}/.claude/.credentials.json" "${VAR_HOME}/.claude/.credentials.json"
+    cp "$VARIANT" "${VAR_HOME}/.claude/CLAUDE.md"
+    cp "$VARIANT" "${RUN_DIR}/variant-source.md"
+
+    log "Condition: variant ($(basename "$VARIANT"))"
+    for i in $(seq 1 "$TRIALS"); do
+        run_one variant "$i" "$VAR_HOME"
+    done
+    echo
+fi
 
 cat > "${RUN_DIR}/META.md" <<EOF
 # Run ${TIMESTAMP}

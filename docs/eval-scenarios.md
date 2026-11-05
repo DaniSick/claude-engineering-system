@@ -133,17 +133,33 @@ For each scenario, record:
 
 Tokens are not directly measurable from the CLI. Use tool call count and files read as proxies for effort proportionality.
 
+### Run status
+
+The scenarios below are **specifications, not results**. Most have never been executed —
+they describe what to check, and no pass/fail has been recorded against them.
+
+What *has* been run, with data:
+
+| Eval | Instrument | Status |
+|------|-----------|--------|
+| Security detection A/B | `scripts/eval-security.sh` + `docs/eval/fixture-blind.py` | Run 2026-11-05. **No detection difference** — 6/6 both conditions. See [`eval/RESULTS.md`](eval/RESULTS.md). |
+| Report-format discipline | `scripts/score-eval.sh` | Run 2026-11-05. System 5.0/5, baseline 1.7/5 across 3 trials each. |
+
+The scenarios in this document remain the backlog. Anyone running one should append its
+result — date, Claude Code version, observed behavior, pass/fail — rather than leaving the
+specification unmarked. A scenario with no recorded run proves nothing about the system.
+
 ---
 
 ## Response mode scenarios
 
-These scenarios verify the ferb/explained/auto mode system. All are conversational — they cannot be scripted but can be manually reproduced.
+These scenarios verify the six-mode system (`ninja`, `ferb`, `surgical`, `blueprint`, `explained`, `auto`). All are conversational — they cannot be scripted but can be manually reproduced.
 
 ### M1 — No mode set, substantial task
 
 **Input**: Start a new session. Send a non-trivial task (e.g., "Add a new agent for database schema review").
 
-**Expected**: Claude uses `AskUserQuestion` to ask which mode before starting work. Three options presented: ferb, explained, auto.
+**Expected**: Claude uses `AskUserQuestion` to ask which mode before starting work. Six options presented: ninja, ferb, surgical, blueprint, explained, auto.
 
 **Red flags**: Starting work without asking. Asking with a long preamble or explanation of the modes.
 
