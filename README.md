@@ -7,20 +7,33 @@ A version-controlled personal configuration for [Claude Code](https://claude.ai/
 
 Goal: fewer wasted turns on real engineering tasks. See [`docs/token-budget.md`](docs/token-budget.md) for exactly what it costs in input tokens per turn and when it saves vs. when it does not.
 
-## Before / after
+## What it changes
 
-**Security review** — without CES, Claude gives a generic checklist.
-With CES, `/sec-audit` runs `@security-auth`, `@security-injection`, and `@security-web` in
-parallel, then produces a structured table with `CONFIRMED` / `HYPOTHESIS` labels, file:line
-evidence, and a compound-chain analysis pass.
+These describe what the configuration **instructs** Claude to do. They are design intent,
+not measured outcomes — see [Validation status](#validation-status).
 
-**Bug investigation** — without CES, Claude patches the symptom, fails, and retries without
-direction. With CES, `/investigate-bug` enforces root-cause tracing before any edit, and
-escalates to a fresh investigation after two consecutive failures on the same problem.
+**Security review** — `/sec-audit` dispatches `@security-auth`, `@security-injection`, and
+`@security-web` against the target, then reports a table with `CONFIRMED` / `HYPOTHESIS`
+labels, file:line evidence, and a compound-chain pass that looks for vulnerabilities created
+by the interaction of individually-minor findings.
 
-**Response verbosity** — without CES, every response is prose-heavy. With `/mode ninja`,
-outputs are diff + one line. With `/mode ferb` (default), results come first with a ≤3-line
-explanation, no re-reading files already in context.
+**Bug investigation** — `/investigate-bug` requires tracing to a root cause before any edit,
+and escalates to a fresh investigation after two consecutive failed fixes on the same problem.
+
+**Response verbosity** — `/mode ninja` reduces output to diff plus one line. `/mode ferb`
+(the default) puts the result first with a ≤3-line explanation and forbids re-reading files
+already in context.
+
+## Validation status
+
+**The effectiveness claims in this repository are unvalidated.** The token costs are measured
+(`scripts/measure-tokens.sh`); the benefits are not. No A/B comparison has been run, and
+[`docs/eval-scenarios.md`](docs/eval-scenarios.md) specifies 22 scenarios with zero recorded
+results.
+
+What is verified: the system deploys correctly (33 passing tests), the hook detects its
+fixture patterns, and global skills load in Claude Code 2.1.87. What is not: whether any of
+it improves outcomes. Treat the design as reasoned, not proven.
 
 ## What it installs
 
@@ -34,7 +47,7 @@ explanation, no re-reading files already in context.
 
 Current token footprint, measured by `scripts/measure-tokens.sh`:
 
-- Permanent per-turn cost (`CLAUDE.md`): **~3,030 tokens** (includes the six response modes and their strategic token-saving rules).
+- Permanent per-turn cost (`CLAUDE.md`): **~3,786 tokens** (includes the six response modes and their strategic token-saving rules).
 - Mean agent (loaded on invocation): ~1,560 tokens.
 - Mean skill (loaded on invocation): ~910 tokens.
 

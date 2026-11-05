@@ -89,5 +89,5 @@ else:
         print(f"  largest: {s['path']}  ({s['tokens']} tokens)")
     print()
     print("For exact Claude tokenization, run:")
-    print("  anthropic api count_tokens --model claude-opus-4-7 < global/CLAUDE.md")
+    print("  anthropic api count_tokens --model claude-opus-5 < global/CLAUDE.md")
 PY
