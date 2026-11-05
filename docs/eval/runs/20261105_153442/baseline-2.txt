@@ -1,0 +1,58 @@
+I read all 18 files (about 1,300 lines). I found 5 critical, 3 high and 2 medium issues, plus some lower-severity ones. Line numbers below are from the current files. I didn't run anything; this is a read-through only.
+
+## Critical
+
+**1. Anyone can export the full user list without logging in**: `routes/__init__.py:36-41`
+The legacy route `/admin/export-users` is wired to `admin.export_users`, which is the plain function. The `_protected()` helper (`routes/admin.py:18-21`) adds the admin check only to the copy it registers on the blueprint, not to the module-level name. The other two legacy aliases use `app.view_functions[...]`, which holds the protected copy, so they are fine. This one returns every user's id, username, email, role and active flag to anonymous callers.
+*Fix:* use `app.view_functions["admin.export_users"]`, or remove the legacy aliases.
+
+**2. Any user can make themselves admin through onboarding**: `routes/onboarding.py:53-55`, `serializers.py:3-10`
+`complete_profile_step` builds its update from `serializers.user_fields()`, and that list includes `role` and `email`. Sending `POST /api/onboarding/profile` with `{"role": "admin"}` grants admin. The endpoint can be called again at any time; nothing checks the onboarding state. It also lets a user change their email without the `email_verified = 0` reset that `profile.change_email` applies.
+*Fix:* use a separate allowlist such as `{"username", "display_name", "timezone", "locale"}`.
+
+**3. Password-reset tokens can be forged for any account**: `password_reset.py:22-24`
+The token is `sha256(f"{email}:{window}")[:32]`. There is no secret, and the window is just `time // 3600`. An attacker who knows a victim's email can compute a valid token and take over the account. The token also isn't single-use: it stays valid for the rest of the hour after a successful reset. The comparison at `:42` uses `==` rather than a constant-time check.
+*Fix:* store random tokens (`secrets.token_urlsafe`) hashed in the database, with an expiry and a used flag. At minimum, use an HMAC keyed with `SECRET_KEY` that includes the current password hash, compared with `hmac.compare_digest`.
+
+**4. The transfer-reversal endpoint lets users create money**: `routes/transfer.py:72-97`
+`reverse_transfer` accepts any ledger entry on an account the user owns, including the user's own debit entry. Reversing a debit of `-X` runs `balance - (-X)`, which adds X back to the source account, while the destination keeps the X it received. Nothing records that an entry was already reversed, so it can be repeated without limit. Reversals of reversals are also accepted.
+*Fix:* model reversals at the transfer level, so both legs are reversed together with the destination debited. Mark entries as reversed so they can't be reversed twice, and limit who can reverse.
+
+**5. Concurrent transfers can overdraw an account**: `routes/transfer.py:46-67`
+The balance is checked at `:46` outside any transaction. The connection is in autocommit mode (`isolation_level=None`, `db.py:22`), so the two balance updates and two ledger inserts are four separate commits. Parallel requests can all pass the check and overdraw the account. A failure partway through leaves the ledger inconsistent.
+*Fix:* wrap the work in `db.transaction()` and debit with a condition, e.g. `UPDATE ... SET balance_cents = balance_cents - ? WHERE id = ? AND balance_cents >= ?`, then check the affected row count.
+
+## High
+
+**6. Batch imports can read any file on the server**: `routes/upload.py:57-74` together with `jobs/import_job.py:14-18`
+The batch endpoint validates only the `manifest` field. Each entry's `path` is queued unchecked, without a `resolved` value. The worker then runs `os.path.join(IMPORT_ROOT, path)`, which accepts `../../etc/...`, and an absolute path replaces the root entirely. There is no file-extension check in the worker either: anything not ending in `.json` is parsed as CSV. The result is arbitrary server files being read into the `contacts` table.
+*Fix:* call `validate_import_path` on every entry and pass along the resolved path. As defence in depth, check again in the worker that the path stays inside the import root.
+
+**7. Debug mode is always on**: `config.py:7`, used in `app.py:57-68`
+`DEBUG = os.environ.get("APP_DEBUG", "false")` is a string, and any non-empty string counts as true, including the default `"false"`. Every unhandled error therefore returns the exception message, the full traceback and `g.user` (id, username, email, role) to the client.
+*Fix:* `DEBUG = os.environ.get("APP_DEBUG", "").lower() in ("1", "true", "yes")`.
+
+**8. Every logged-in user can see all users' emails and last-login times**: `routes/users.py:30-35` and `:41-48`
+`list_users` and `get_user` return `serializers.detailed_user`, which includes `email`, `timezone`, `locale` and `last_login_at`, for any user. By contrast, `search_users` uses `public_user`, which suggests the directory endpoints were meant to return only public fields.
+*Fix:* use `public_user` here, or `detailed_user` only when `owns_or_admin` is true.
+
+## Medium
+
+**9. Changing the email doesn't require re-authentication**: `routes/profile.py:51-73`
+No current password is required, and existing sessions stay active. Combined with the reset flow, anyone holding a stolen session cookie can take the account over permanently. The uniqueness check at `:62-66` also has a race window unless the column has a UNIQUE constraint.
+
+**10. Login rate limiting only counts attempts per username**: `routes/session.py:20-49`
+Attempts are counted per username, not per IP or client. Password spraying (one common password tried against many usernames) is not slowed. An attacker can also lock out any known username by sending 10 bad attempts.
+
+## Low / hardening
+
+- `auth.py:17-24`: password hashing is a hand-rolled iterated SHA-256. Use a dedicated password hash such as argon2id, bcrypt or scrypt (`hashlib.scrypt` is in the standard library).
+- `auth.py:35-41`: session tokens are stored in plaintext. A leak of the database or a backup gives live sessions. Store `sha256(token)` instead.
+- `routes/users.py:73-76`: `%` and `_` in the search term aren't escaped in the `LIKE` pattern, so `q=%%` lists every username.
+- `routes/admin.py:53-61`: deactivation writes no audit-log entry, and an admin can deactivate their own account.
+- `app.py:33-41`: there is no `Strict-Transport-Security` header, even though the session cookie is marked `secure`.
+- `password_reset.py:51`: `complete_reset` looks up the raw email rather than the normalized one. Mixed-case emails pass token verification but then fail the lookup. This is a correctness bug, not an exploit.
+
+Things I checked that look fine: the SQL `ORDER BY` and `SET` clauses are built from allowlists; `validate_import_path` correctly rejects traversal and symlink escapes; and the session cookie flags are set correctly (HttpOnly, Secure, SameSite=Lax). The JSON-only request bodies also block simple cross-site form posts.
+
+I'd fix #1–#5 first: together they allow anonymous data export, privilege escalation, account takeover and creating money from nothing.

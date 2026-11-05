@@ -1,0 +1,78 @@
+Specialists are running. Waiting for results.
+
+One specialist done. Waiting for the remaining three.
+
+Two down, two still running.
+
+Three done, one remaining.
+
+All four specialists complete. Compiling the final report now.
+
+---
+
+## Security Audit — `/tmp/tmp.v3vXLCQWDK/target`
+
+### Summary
+
+The codebase is a Flask-based financial ledger API with multi-user accounts, money transfers, file imports, and password-reset flows. The overall risk level is **critical**: four independent vulnerabilities can each achieve full financial integrity violation or account takeover without chaining, and two compound chains amplify the impact further. The most urgent finding is a mass-assignment flaw that lets any authenticated user self-promote to admin. Close seconds are three distinct flaws in the transfer/reversal flow that allow unlimited money creation. The password-reset token system is also fundamentally broken, permitting offline token forgery for any account whose email is known.
+
+---
+
+### Findings (ordered by severity)
+
+| # | Vulnerability | Specialist | File:Line | CWE | Severity | Status | Fix |
+|---|---|---|---|---|---|---|---|
+| 1 | Mass assignment: `role` in `USER_FIELDS` lets any user self-promote to admin via `POST /api/onboarding/profile` | @security-logic | `routes/onboarding.py:53-54`, `serializers.py:3-10` | CWE-915 | **CRITICAL** | CONFIRMED | Replace `serializers.user_fields()` with `serializers.WRITABLE_BY_OWNER` at `onboarding.py:54` |
+| 2 | TOCTOU double-spend: balance check and debit run outside a transaction (autocommit mode); two concurrent requests both pass the check | @security-logic | `routes/transfer.py:34,46,50-55`, `db.py:22` | CWE-367 | **CRITICAL** | CONFIRMED | Wrap the entire `create_transfer()` body in `with db.transaction() as conn`; re-read and re-check balance inside the lock |
+| 3 | Single-leg reversal creates money: `reverse_transfer()` updates only the requesting user's account; counterpart entry untouched; source recovers funds, destination keeps credit | @security-logic | `routes/transfer.py:76-96` | CWE-840 | **CRITICAL** | CONFIRMED | Fetch both ledger legs, verify source ownership, reverse both accounts atomically in one `BEGIN IMMEDIATE` transaction |
+| 4 | Reversal replay: no idempotency guard; same ledger entry can be reversed unlimited times, inflating balance per call | @security-logic | `routes/transfer.py:76-96` | CWE-294 | **CRITICAL** | CONFIRMED | Add `reversed_at` column to ledger; reject with 409 if already set |
+| 5 | Path traversal via batch import: each entry path skips `validate_import_path()` entirely; no null-byte, segment, suffix, or containment check | @security-injection | `routes/upload.py:64-74` | CWE-22 | **CRITICAL** | CONFIRMED | Call `validate_import_path(path)` for every entry; include the returned `resolved` value in the queue message |
+| 6 | Path traversal in job worker: batch messages carry no `resolved` key, so `_resolve()` falls back to bare `os.path.join()` without `realpath()`; absolute paths (`/etc/passwd`) and `../` traversal both work; file contents are inserted into the database | @security-injection | `jobs/import_job.py:17-18` | CWE-22 | **CRITICAL** | CONFIRMED | Treat missing `resolved` as a fatal error; never fall back to unvalidated join |
+| 7 | Password reset token is offline-forgeable: `_derive(email, window)` = `sha256(f"{email}:{window}")[:32]`; no server secret; attacker with target email computes valid token locally without requesting a reset | @security-auth, @security-data | `password_reset.py:22-24` | CWE-640 | **HIGH** | CONFIRMED | Use HMAC with the app secret: `hmac.new(SECRET_KEY, material, sha256).hexdigest()[:32]` |
+| 8 | `config.DEBUG` always truthy: `os.environ.get("APP_DEBUG", "false")` returns the string `"false"` when unset; `bool("false") is True`; every unhandled exception leaks full stack trace, exception type, and authenticated user object (id, email, role) | @security-auth, @security-data | `config.py:7`, `app.py:57-67` | CWE-209 | **HIGH** | CONFIRMED | `DEBUG = os.environ.get("APP_DEBUG","").lower() in ("1","true","yes")` |
+| 9 | Weak password hashing: custom iterated SHA-256 (120k rounds); no memory hardness; SHA-256 runs at ~10B/s on GPUs vs. ~10K/s for bcrypt; offers negligible offline-crack resistance | @security-auth, @security-data | `auth.py:17-24` | CWE-916 | **HIGH** | CONFIRMED | Replace with Argon2id (`argon2-cffi`) or bcrypt; re-hash on next successful login |
+| 10 | Reset token not single-use: stateless derivation means token stays valid for the full 1-hour window and can be reused after `complete_reset()` runs | @security-auth | `password_reset.py:35-44` | CWE-640 | **HIGH** | CONFIRMED | Persist a one-time nonce at issue time; delete on first successful verify |
+| 11 | Plaintext reset token in outbox: raw token stored as `payload` column; database or backup exposure yields immediately usable account-takeover tokens | @security-auth, @security-data | `routes/session.py:123-128` | CWE-312 | **MEDIUM** | CONFIRMED | Store only the email; derive token fresh when the mailer sends; or purge outbox rows immediately after dispatch |
+| 12 | Login rate limit per-username only: no per-IP limit; credential stuffing across many accounts from one IP is unrestricted | @security-auth | `routes/session.py:20-47` | CWE-307 | **MEDIUM** | CONFIRMED | Add parallel IP-keyed counter using `request.remote_addr`; block at a higher threshold (e.g., 50/15 min) |
+| 13 | Client-controlled `X-Request-Time` header reflected verbatim as `generated_at` in admin export | @security-data | `routes/admin.py:46` | CWE-116 | **LOW** | CONFIRMED | Generate `generated_at` server-side: `datetime.utcnow().isoformat()+"Z"` |
+
+---
+
+### Compound Attack Vectors
+
+| Chain | Findings | Combined Severity | Conditions |
+|---|---|---|---|
+| **Self-promote then print money** | #1 → #4 | CRITICAL | Single authenticated account. POST `{"role":"admin"}` to `/api/onboarding/profile` → become admin. Initiate any transfer. POST `/api/transfers/<debit_entry_id>/reverse` repeatedly → balance grows without bound. No budget or account required beyond the initial login. |
+| **Race + single-leg reversal = double funds** | #2 + #3 | CRITICAL | Two concurrent HTTP requests, one session. Race two simultaneous transfers from the same source to pass the balance check twice (Finding #2). Reverse the debit entry of one transfer (Finding #3). Net: source recovers its money; destination holds credits from both transfers. |
+| **Offline token forge → account takeover → escalate** | #7 + #1 | CRITICAL | Requires knowing any registered user's email. Compute reset token offline → reset their password → log in as that user → escalate to admin via Finding #1. No interaction with the target account required. |
+
+---
+
+### Coverage Matrix
+
+| Surface | Agent | Coverage | Notes |
+|---|---|---|---|
+| Authentication | @security-auth | Evaluated / 4 findings | Sessions, cookies, login flow clean; password hashing, reset token, DEBUG flag flawed |
+| Authorization / IDOR | @security-auth, @security-logic | Evaluated / 1 finding | `owns_or_admin` and `require_role` correct; onboarding mass-assignment breaks role model |
+| SQL / NoSQL injection | @security-injection | Evaluated / No findings | All queries use parameterized `?`; `build_order_clause` uses frozenset allowlist |
+| Command / template injection | @security-injection | Evaluated / No findings | No shell calls, no template rendering of user data |
+| XSS / output encoding | @security-injection | N/A | API-only, JSON responses; CSP `default-src 'none'` set |
+| SSRF / path traversal | @security-injection | Evaluated / 2 findings | Batch import bypasses all path validation; job worker falls back to raw join |
+| CSRF / CORS / CSP | @security-web | Partial | `SameSite=Lax` on session cookie provides baseline CSRF protection for state-mutating POSTs; no CSRF token; CSP set at app level |
+| API response exposure | @security-web | Evaluated | `serializers.*` restricts fields; debug flag causes full exposure on errors (Finding #8) |
+| Rate limiting | @security-auth | Evaluated / 1 finding | Per-username login limiting exists; no per-IP limit; no rate limit on password reset endpoint |
+| File upload/download | @security-injection | Evaluated / 2 findings | Single-import path validation correct; batch path validation absent |
+| Secrets / cryptography | @security-data | Evaluated / 3 findings | App secret key required at startup; reset token missing HMAC; password hash non-standard |
+| Data in logs/errors | @security-data | Evaluated / 1 finding | Stack trace + user object leaked via always-truthy DEBUG flag |
+| Business logic | @security-logic | Evaluated / 4 findings | Transfer TOCTOU, single-leg reversal, reversal replay, mass-assignment escalation |
+| Race conditions | @security-logic | Evaluated / 1 finding | `create_transfer()` balance check outside transaction |
+| Dependencies | @security-deps | Not evaluated | No `requirements.txt` or lockfile found in target; external tooling needed |
+
+---
+
+### Residual Risk
+
+- **Dependencies**: no package manifest present; CVE exposure in Flask, SQLite drivers, and any unpinned libraries not assessed. Run `pip audit` against a resolved lockfile.
+- **CSRF**: `SameSite=Lax` protects simple cases but does not cover all cross-site scenarios (e.g., top-level navigations or same-site subdomain attacks). A CSRF token would fully close this.
+- **No password-reset rate limit**: the endpoint at `POST /api/session/password-reset/request` is unbounded; an attacker can flood reset emails for any address.
+- **Dynamic testing not performed**: race condition in Finding #2 confirmed by static analysis; actual exploitability under SQLite's default locking may vary by concurrency model; verify under load.

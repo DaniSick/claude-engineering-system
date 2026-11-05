@@ -22,12 +22,21 @@
 
 # No `set -e`: a non-zero exit blanks the status line. Failures degrade instead.
 
+# The theme list lives here and nowhere else. setup.sh reads it from this flag
+# rather than keeping a copy that would drift out of sync.
+CES_THEME_NAMES="ghost ember matrix ice mono default"
+
+if [[ "${1:-}" == "--theme-names" ]]; then
+    printf '%s\n' $CES_THEME_NAMES
+    exit 0
+fi
+
 # `--themes` renders every theme at three pressure levels so a choice can be
 # made by looking rather than by reading colour codes. It re-execs this script
 # once per sample; that spawning only happens here, never on the status path.
 if [[ "${1:-}" == "--themes" ]]; then
     _self="${BASH_SOURCE[0]}"
-    for _t in ghost ember matrix ice mono default; do
+    for _t in $CES_THEME_NAMES; do
         printf '\n  %s\n' "$_t"
         for _p in 30 70 92; do
             printf '    '

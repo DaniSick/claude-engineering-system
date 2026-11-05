@@ -1,0 +1,87 @@
+I read all 18 files (about 1,300 lines). Below are the issues ranked by severity. I found them by reading the code only. Nothing was run, so none of these has been exploited for real.
+
+## Critical
+
+**1. Anyone can export every user's data without logging in**
+`routes/__init__.py:36-41`
+The other two legacy aliases point at the protected view in `app.view_functions[...]`. `/admin/export-users` instead points at the raw `admin.export_users` function, which has no admin check. As a result, `GET /admin/export-users` returns every user's id, username, email, role and active flag to anyone. The docstring at `routes/admin.py:3-5` says nothing is reachable without `_protected`, which is wrong here.
+*Fix:* use `app.view_functions["admin.export_users"]`.
+
+**2. Password reset tokens can be computed by anyone, so any account can be taken over**
+`password_reset.py:22-24` (used at `:32` and `:42`)
+The token is `sha256(f"{email}:{window}")[:32]`, with no secret mixed in. Anyone who knows a victim's email can work out the current token and call `/api/session/password-reset/confirm`. Also:
+- The token isn't stored, so it can be used again and again within its window.
+- It is compared with `==` (`:42`), not a constant-time comparison.
+
+*Fix:* use a random token, store only its hash, delete it after one use, and compare with `hmac.compare_digest`. At minimum, HMAC it with `SECRET_KEY` plus a per-user value such as the password hash.
+
+**3. Users can make themselves admin through onboarding**
+`routes/onboarding.py:53-55` and `serializers.py:3-10`
+`complete_profile_step` builds its UPDATE from `serializers.user_fields()`, and that list includes `role` and `email`. So `POST /api/onboarding/profile {"role":"admin"}` grants admin. The same route also lets a user set any email, skipping the uniqueness check and the `email_verified = 0` reset that `profile.change_email` applies.
+*Fix:* use an allowlist that only contains `username`, `display_name`, `timezone` and `locale`.
+
+**4. Reversing a transfer creates money, and can be repeated**
+`routes/transfer.py:72-97`
+- A user can reverse the debit entry (the `-X` row) on their own source account. The code runs `balance - (-X)`, so the sender gets X back while the recipient keeps X.
+- Nothing marks an entry as already reversed, so this can be done any number of times. Reversing a reversal entry also works.
+- The other side of the transfer is never adjusted.
+
+*Fix:* treat reversal as an action on the whole two-sided transfer. Check that it hasn't been reversed already, and decide who is allowed to reverse.
+
+**5. Directory traversal / arbitrary file read in batch imports**
+`routes/upload.py:57-74` together with `jobs/import_job.py:14-18`
+In batch imports, only `manifest` is validated. The `path` of each entry goes straight onto the queue. The worker then runs `os.path.join(IMPORT_ROOT, path)`, so `"../../../etc/passwd"` or an absolute path like `"/etc/shadow"` escapes the import root. Any file the worker can read gets parsed as CSV and written into `contacts`. If the entry is a dict without a `path`, it gets queued with `path: None` and crashes the worker.
+*Fix:* run `validate_import_path` on every entry and queue the resolved path. The worker should check it again too.
+
+## High
+
+**6. Debug mode is always on, so 500 errors leak tracebacks and user data**
+`config.py:7` and `app.py:57-67`
+`DEBUG` is the string `"false"`, and any non-empty string counts as true. So every unhandled exception returns the full traceback, the exception message and `g.user` (email and role) to the client.
+*Fix:* `DEBUG = os.environ.get("APP_DEBUG", "").lower() in ("1", "true", "yes")`.
+
+**7. Transfers can overdraw accounts or be left half-done**
+`routes/transfer.py:46-67`
+The balance check and the four writes don't run in a transaction, and the connection is in autocommit mode (`db.py:22`). Two requests sent at the same time can both pass the `balance >= amount` check and overdraw the account. A failure partway through leaves the debit applied without the credit.
+*Fix:* wrap the whole thing in `db.transaction()` and use a conditional update, `UPDATE ... SET balance = balance - ? WHERE id = ? AND balance_cents >= ?`, then check the number of rows changed.
+
+**8. Every logged-in user can see all other users' emails and last-login times**
+`routes/users.py:29-35` and `routes/users.py:41-48`
+`list_users` and `get_user` return `detailed_user`, which includes `email`, `timezone`, `locale` and `last_login_at`, for every active user. `search_users` uses `public_user`, which suggests the directory was meant to be public fields only.
+*Fix:* return `public_user` to anyone who isn't the owner or an admin.
+
+## Medium
+
+**9. Login rate limiting lets anyone lock out any user, and doesn't stop password spraying**
+`routes/session.py:46-49`
+The limit is counted per username only. Ten bad attempts lock any chosen user out for 15 minutes. There's no limit per IP or overall, so an attacker can try a common password against many usernames.
+
+**10. Changing email doesn't ask for the password again**
+`routes/profile.py:51-73`
+Someone holding a stolen session can change the email address and then use password reset to take the account over permanently. Fix #2 doesn't close this path.
+
+**11. Any user can import any file in the shared import folder**
+`validators.py:47-52` and `routes/upload.py:22`
+`IMPORT_ROOT` is shared by all users and has no per-user subfolder. Any user can import another user's uploaded file into their own contacts.
+
+## Low
+
+**12. Reset tokens are stored as plain text in the outbox**
+`routes/session.py:124-128`
+**13. Session tokens are stored as plain text**
+`auth.py:37-40`
+Anyone who can read the database can hijack sessions. Store a hash of the token instead.
+**14. Password hashing is home-made**
+`auth.py:17-24`
+It's iterated SHA-256 rather than a standard password hash. Use argon2id, bcrypt or scrypt.
+**15. Password reset uses the email inconsistently**
+`password_reset.py:51`
+The token check uses the lowercased email, but the user lookup uses the raw input. It isn't directly exploitable, but the two checks can disagree.
+**16. Search terms can contain wildcards**
+`routes/users.py:76`
+`%` and `_` in the search term aren't escaped, so users can run wildcard enumeration queries.
+**17. Import files can be swapped after they're checked**
+`validators.py:47-48` and `jobs/import_job.py:65-72`
+The path is resolved when the request comes in but opened later by the worker. A symlink swapped in between gets followed. Open with `O_NOFOLLOW`, or check the path again in the worker.
+
+The most urgent are #1–#4. #1 and #2 can be exploited without logging in, and #3 and #4 need only an ordinary account.

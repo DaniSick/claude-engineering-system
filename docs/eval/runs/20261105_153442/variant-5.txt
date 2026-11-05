@@ -1,0 +1,54 @@
+Here is a summary of all 11 confirmed findings, most-severe first:
+
+---
+
+### Critical
+
+**1. Privilege escalation via onboarding — `routes/onboarding.py:53`**
+`serializers.user_fields()` returns a tuple that includes `"role"`. It is passed directly to `build_update`, so any authenticated user can `POST /api/onboarding/profile` with `{"role": "admin"}` and promote themselves. Fix: remove `"role"` from `USER_FIELDS` or use a separate, restricted set for the onboarding step.
+
+**2. Forgeable password-reset tokens — `password_reset.py:22`**
+`_derive(email, window)` is `sha256(f"{email}:{window}").hexdigest()[:32]` — no HMAC secret. Anyone who knows a victim's email and the current hour can compute a valid token and take over the account. Fix: use `hmac.new(config.SECRET_KEY.encode(), f"{email}:{window}".encode(), "sha256").hexdigest()`.
+
+**3. TOCTOU double-spend in transfers — `routes/transfer.py:46`**
+The balance check and the two UPDATE statements run outside a transaction. Two concurrent requests against the same account both pass the check, then both debit, driving the balance negative. Fix: wrap the entire check + both UPDATEs in a `db.transaction()` and add a `WHERE balance_cents >= ?` guard in the debit UPDATE.
+
+**4. Path traversal in batch imports — `routes/upload.py:64`**
+`create_batch_import` calls `validate_import_path` for the manifest but **not** for each entry path. Unvalidated paths reach `import_job._resolve()` which falls back to a bare `os.path.join(IMPORT_ROOT, path)` without a `realpath` safety check, enabling arbitrary file reads. Fix: call `validate_import_path` on every entry in the loop and store the resolved path in the queue message.
+
+**5. Reversal creates money — `routes/transfer.py:72`**
+`reverse_transfer` reverses only the single ledger entry passed in, adjusting one account's balance. The counterpart leg is untouched. Reversing the debit leg returns funds to the source while the destination keeps its credit — money created from nothing. Fix: store a foreign key linking both legs of a transfer and reverse both atomically.
+
+---
+
+### High
+
+**6. `DEBUG` always truthy — `config.py:7` / `app.py:57`**
+`DEBUG = os.environ.get("APP_DEBUG", "false")` stores the *string* `"false"`. `if config.DEBUG:` evaluates that string as truthy, so full tracebacks and the `g.user` object are returned to callers on every unhandled exception in production. Fix: `DEBUG = os.environ.get("APP_DEBUG", "false").lower() == "true"`.
+
+---
+
+### Medium
+
+**7. Non-constant-time token comparison — `password_reset.py:42`**
+`token == _derive(email, window)` short-circuits, creating a timing oracle. Use `hmac.compare_digest`.
+
+**8. Weak custom password KDF — `auth.py:17`**
+The hand-rolled SHA-256 chain mixes the password in only once; subsequent rounds operate on the digest alone. At 120 000 iterations this is roughly equivalent to PBKDF2 with ~20 000 iterations — far below OWASP's recommendation. Use `hashlib.scrypt` or `bcrypt`.
+
+**9. Rate limiting per-username only — `routes/session.py:46`**
+One attempt per username per 15-minute window means an attacker with many usernames is never rate-limited. Add IP-based limiting alongside the existing identifier-based check.
+
+**10. All user emails exposed to authenticated users — `routes/users.py:29`**
+`GET /api/users` returns `email` for every member. Any logged-in user can harvest the full member directory. Remove `email` from the directory listing or restrict it to admins.
+
+---
+
+### Low
+
+**11. `X-Request-Time` header reflected in admin export — `routes/admin.py:44`**
+`request.headers.get("X-Request-Time")` is embedded verbatim in the JSON export. Use `time.time()` server-side instead of reflecting a client-supplied header.
+
+---
+
+**Chain to call out:** Finding #2 (forgeable tokens) × finding #7 (timing oracle) combine to give an attacker a nearly-trivial, unauthenticated account takeover: forge the token without the secret, then use timing to confirm the correct byte sequence if needed. Finding #6 (always-on debug mode) compounds every other issue by leaking internal state on any induced error.

@@ -101,6 +101,7 @@ PY
 # ── Argument parsing ──────────────────────────────────────────────────────────
 
 PROFILES=""
+THEME=""
 RUN_INIT=false
 
 _args=("$@")
@@ -111,14 +112,22 @@ for _i in "${!_args[@]}"; do
         --profile)
             PROFILES="${_args[$((_i+1))]:-}"
             [[ -n "$PROFILES" ]] || err "--profile needs a value (see --help)" ;;
+        --theme)
+            THEME="${_args[$((_i+1))]:-}"
+            [[ -n "$THEME" ]] || err "--theme needs a value (see --help)" ;;
         --help)
+            _sl="$(dirname "${BASH_SOURCE[0]}")/../statusline/ces-statusline.sh"
             cat <<'USAGE'
 Usage: bash scripts/setup.sh [options]
 
   --verify            check deployment status without making changes
-  --profile <names>   also apply stack permission profiles (comma-separated)
-  --init              choose profiles interactively, then deploy
+  --profile <names>   apply stack permission profiles (comma-separated)
+  --theme <name>      set the status line theme
+  --init              choose profiles and theme interactively, then deploy
   --help              show this help
+
+Run with no options to deploy everything, keeping any theme and profiles
+already configured. Nothing you have customized is reset by an update.
 
 Base permissions are stack-neutral (git, ls, grep, find, cat, ...).
 Stack-specific commands live in profiles and are opt-in:
@@ -128,12 +137,33 @@ USAGE
                 [[ -f "$p" ]] && echo "  $(basename "$p" .json)"
             done
             echo
-            echo "Example: bash scripts/setup.sh --profile node,python"
+            echo "Status line themes:"
+            echo
+            if [[ -f "$_sl" ]]; then
+                for t in $(bash "$_sl" --theme-names 2>/dev/null); do echo "  $t"; done
+            fi
+            echo
+            echo "Examples:"
+            echo "  bash scripts/setup.sh --init"
+            echo "  bash scripts/setup.sh --profile node,python --theme matrix"
             exit 0 ;;
         [!-]*) : ;;
         *) warn "Unknown argument: ${_args[$_i]}" ;;
     esac
 done
+
+# Theme names come from the status line script itself, so there is no second
+# list here to fall out of sync with it.
+SL_SRC="${REPO_DIR}/statusline/ces-statusline.sh"
+available_themes() {
+    [[ -f "$SL_SRC" ]] && bash "$SL_SRC" --theme-names 2>/dev/null
+}
+
+if [[ -n "$THEME" ]]; then
+    _valid=0
+    for _t in $(available_themes); do [[ "$_t" == "$THEME" ]] && _valid=1; done
+    [[ $_valid -eq 1 ]] || err "unknown theme '${THEME}' — valid: $(available_themes | tr '\n' ' ')"
+fi
 
 available_profiles() {
     for p in "${REPO_DIR}/global/profiles/"*.json; do
@@ -161,6 +191,30 @@ if [[ "$RUN_INIT" == "true" ]]; then
     PROFILES="$(IFS=,; echo "${_sel[*]}")"
     [[ -n "$PROFILES" ]] && log "Selected profiles: ${PROFILES}" || log "Base permissions only"
     echo
+
+    if [[ -f "$SL_SRC" ]]; then
+        echo "Status line theme. Each is shown at low, medium and high context pressure:"
+        mapfile -t _themes < <(available_themes)
+        _n=1
+        for _t in "${_themes[@]}"; do
+            printf '\n  %d) %s\n' "$_n" "$_t"
+            for _p in 30 70 92; do
+                printf '     '
+                printf '%s' "{\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"${PWD}\"},\"context_window\":{\"used_percentage\":${_p}}}" \
+                    | CES_THEME="$_t" bash "$SL_SRC"
+            done
+            _n=$((_n + 1))
+        done
+        echo
+        read -r -p "Number (empty = ${_themes[0]}): " _pick
+        if [[ "$_pick" =~ ^[0-9]+$ && -n "${_themes[$((_pick-1))]:-}" ]]; then
+            THEME="${_themes[$((_pick-1))]}"
+        else
+            THEME="${_themes[0]}"
+        fi
+        log "Selected theme: ${THEME}"
+        echo
+    fi
 fi
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
@@ -378,10 +432,11 @@ if ref_sl:
         print("[setup]   statusLine set to a different command (yours, left alone)")
 PY
 else
-    python3 - "$SETTINGS" "$REF_SETTINGS" "$BACKUP_DIR" "$TIMESTAMP" <<'PY'
+    python3 - "$SETTINGS" "$REF_SETTINGS" "$BACKUP_DIR" "$TIMESTAMP" "$THEME" <<'PY'
 import json, sys, os, shutil
 
 settings_path, ref_path, backup_dir, ts = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+theme = sys.argv[5] if len(sys.argv) > 5 else ""
 
 try:
     with open(settings_path) as f:
@@ -435,29 +490,56 @@ if ref_hooks:
         settings["hooks"] = cur_hooks
         changed = True
 
-# ── Status line (set only when absent; never clobber a user's own) ───────────
+# ── Status line ──────────────────────────────────────────────────────────────
+# The theme rides in the command as CES_THEME=..., which is why it survives
+# redeploys: a plain `setup.sh` re-reads whatever theme is already there and
+# writes it back. Only --theme changes it. A statusLine pointing at some other
+# script is someone else's and is never touched.
+import re
+
 ref_sl = ref.get("statusLine")
 if ref_sl:
+    base_cmd = ref_sl.get("command", "")
     cur_sl = settings.get("statusLine")
-    if not cur_sl:
-        settings["statusLine"] = ref_sl
-        changed = True
-        print("[setup]   statusLine configured")
-    elif cur_sl != ref_sl:
-        print("[setup]   statusLine already set to something else — left untouched")
-        print(f"[setup]     yours:  {cur_sl.get('command', cur_sl)}")
-        print(f"[setup]     ours:   {ref_sl.get('command')}")
+    cur_cmd = (cur_sl or {}).get("command", "") if isinstance(cur_sl, dict) else ""
+    ours = "ces-statusline.sh" in cur_cmd
+
+    if cur_sl and not ours:
+        print("[setup]   statusLine points at another script — left untouched")
+        print(f"[setup]     yours: {cur_cmd or cur_sl}")
         print("[setup]     to switch, replace the statusLine block in settings.json")
+    else:
+        existing = re.search(r"CES_THEME=([A-Za-z0-9_-]+)", cur_cmd)
+        chosen = theme or (existing.group(1) if existing else "")
+        new_sl = dict(ref_sl)
+        new_sl["command"] = (f"CES_THEME={chosen} " if chosen else "") + base_cmd
+        if new_sl != cur_sl:
+            settings["statusLine"] = new_sl
+            changed = True
+            if not cur_sl:
+                print(f"[setup]   statusLine configured (theme: {chosen or 'script default'})")
+            elif theme and existing and theme != existing.group(1):
+                print(f"[setup]   statusLine theme: {existing.group(1)} → {theme}")
+            else:
+                print(f"[setup]   statusLine updated (theme: {chosen or 'script default'})")
+        elif chosen:
+            print(f"[setup]   unchanged: statusLine (theme: {chosen})")
 
 if not changed:
     print("[setup]   unchanged: settings.json")
     sys.exit(0)
 
-# Backup before writing
-bk_dir = os.path.join(backup_dir, "settings")
-os.makedirs(bk_dir, exist_ok=True)
-shutil.copy2(settings_path, os.path.join(bk_dir, f"settings.json.{ts}"))
-print(f"[setup]   backed up → backups/ces/settings/settings.json.{ts}")
+# Back up only what exists. On a first install there is no settings.json yet,
+# and an unconditional copy2 here raised FileNotFoundError and aborted the
+# merge before anything was written — so a fresh install silently ended up
+# with no permissions, no hook and no status line.
+if os.path.exists(settings_path):
+    bk_dir = os.path.join(backup_dir, "settings")
+    os.makedirs(bk_dir, exist_ok=True)
+    shutil.copy2(settings_path, os.path.join(bk_dir, f"settings.json.{ts}"))
+    print(f"[setup]   backed up → backups/ces/settings/settings.json.{ts}")
+else:
+    os.makedirs(os.path.dirname(settings_path), exist_ok=True)
 
 with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)

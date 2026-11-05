@@ -1,0 +1,68 @@
+Three specialists are running. I've already traced all the key issues from my direct read. I'll compile the confirmed findings now and cross-check against specialist reports when they arrive.
+
+Here are the confirmed findings from my direct code trace:
+
+---
+
+## Security Audit Report — `/tmp/tmp.v3vXLCQWDK/target`
+
+### Summary
+
+This is a Flask-based financial ledger API (SQLite, session cookies, file imports, money transfers). The overall risk is **Critical**. The most severe findings are: a guessable password-reset token with no secret key, a privilege-escalation path via onboarding that lets any user become admin, and an unauthenticated admin data-export endpoint. Several additional high-severity issues exist in the transfer and batch-import flows.
+
+---
+
+### Findings
+
+| # | Vulnerability | File:Line | CWE | Severity | Status | Fix |
+|---|--------------|-----------|-----|----------|--------|-----|
+| 1 | **Password reset token has no secret — fully guessable** | `password_reset.py:22–24` | CWE-640 | Critical | CONFIRMED | Derive token with HMAC-SHA256 keyed on `config.SECRET_KEY`, or generate a random token and store its hash |
+| 2 | **Unauthenticated admin user export** (`/admin/export-users` bypasses `require_role`) | `routes/__init__.py:38–41` | CWE-284 | Critical | CONFIRMED | Use `app.view_functions["admin.export_users"]` (the wrapped version) instead of `admin.export_users` |
+| 3 | **Privilege escalation via onboarding** (`role` field writable in profile step) | `routes/onboarding.py:53–54`, `serializers.py:6–10` | CWE-269 | Critical | CONFIRMED | Remove `"role"` (and `"email"`) from `USER_FIELDS` / `user_fields()`; use a separate admin-only allowlist |
+| 4 | **Path traversal in batch import** (entry paths not validated; absolute path bypasses `IMPORT_ROOT`) | `routes/upload.py:64–75`, `jobs/import_job.py:14–18` | CWE-22 | High | CONFIRMED | Call `validate_import_path()` on each entry path and pass `resolved` in the queue message, same as the single-import endpoint |
+| 5 | **Race condition / TOCTOU in money transfer** (balance check and debit not atomic) | `routes/transfer.py:46–67` | CWE-362 | High | CONFIRMED | Wrap the balance read, check, and both updates in a single `db.transaction()` block; use `SELECT … WHERE balance_cents >= ?` inside the UPDATE instead of a separate read |
+| 6 | **Reverse transfer allows infinite balance inflation** (no idempotency; reversing a negative ledger entry adds money) | `routes/transfer.py:72–97` | CWE-840 | High | CONFIRMED | Track reversal state on the ledger entry (e.g. `reversed_at` column, checked before allowing reversal); also validate that `amount_cents` has the expected sign for the reversal direction |
+| 7 | **`DEBUG = "false"` is truthy — stack traces always leaked** | `config.py:7`, `app.py:57–68` | CWE-209 | High | CONFIRMED | `DEBUG = os.environ.get("APP_DEBUG", "false").lower() in ("1", "true", "yes")` |
+| 8 | **Account lockout DoS** (attacker can lock any user with 10 requests) | `routes/session.py:46–49` | CWE-307 | Medium | CONFIRMED | Also rate-limit by client IP; consider exponential backoff rather than hard lockout, or CAPTCHA |
+| 9 | **Non-constant-time reset token comparison** | `password_reset.py:42` | CWE-208 | Medium | CONFIRMED | Replace `token == _derive(...)` with `hmac.compare_digest(token, _derive(...))` |
+| 10 | **Weak password hashing** (custom SHA-256 chain, not memory-hard) | `auth.py:17–24` | CWE-916 | Medium | CONFIRMED | Replace with `argon2-cffi` (`argon2.PasswordHasher`) or `bcrypt` |
+| 11 | **Reset token stored in plaintext in `outbox` table** | `routes/session.py:124–128` | CWE-312 | Medium | CONFIRMED | Store HMAC or hash of the token; the outbox record should not expose the usable credential |
+| 12 | **Untrusted request header reflected verbatim in export response** (`X-Request-Time`) | `routes/admin.py:46` | CWE-116 | Low | CONFIRMED | Use `datetime.utcnow().isoformat()` on the server side; never reflect client-supplied headers into stored/exported data |
+
+---
+
+### Compound Attack Vectors
+
+| Chain | Findings | Combined Severity | Conditions |
+|-------|----------|-------------------|------------|
+| Self-promote then exfiltrate | #3 → #2 | Critical | Regular user: POST `/api/onboarding/profile` with `{"role":"admin"}`, then GET `/admin/export-users` unauthenticated (or with new admin session) to dump all user emails/roles |
+| Infinite money | #5 + #6 | Critical | Two concurrent transfer requests pass balance check simultaneously (#5), and the debit ledger entries can each be reversed repeatedly for free credits (#6) |
+| Reset any account | #1 | Critical | Compute `sha256(f"{victim_email}:{int(time.time()//3600)}").hexdigest()[:32]` — no secret needed; use it on `POST /api/session/password-reset/confirm` |
+
+---
+
+### Coverage Matrix
+
+| Surface | Agent | Coverage | Notes |
+|---------|-------|---------|-------|
+| Authentication | @security-auth | Evaluated / Findings | Weak hash, guessable reset token, lockout DoS |
+| Authorization / IDOR | @security-auth | Evaluated / Findings | Legacy route auth bypass, privilege escalation via onboarding |
+| SQL / NoSQL injection | @security-injection | Evaluated / No findings | Parameterized queries throughout; `build_order_clause` uses column allowlist |
+| Command / template injection | @security-injection | Evaluated / No findings | No subprocess or template eval found |
+| XSS / output encoding | @security-injection | N/A | JSON API only; no HTML rendering |
+| SSRF / path traversal | @security-injection + @security-logic | Evaluated / Findings | Batch import path traversal (#4) |
+| CSRF / CORS / CSP | @security-web | Evaluated / Partial | `SameSite=Lax` on session cookie mitigates CSRF for most actions; no CORS config found (may default open); CSP set to `default-src 'none'` — good |
+| API response exposure | @security-web | Evaluated / Findings | Unauthenticated export (#2); header reflection (#12) |
+| Rate limiting | @security-web | Evaluated / Findings | Username-only rate limit, lockout DoS (#8) |
+| File upload/download | @security-data | Evaluated / Findings | Batch import path traversal (#4); no file-type bypass in single upload |
+| Secrets / cryptography | @security-data | Evaluated / Findings | Guessable reset token (#1), weak hash (#10), debug leak (#7) |
+| Data in logs/errors | @security-data | Evaluated / Findings | Stack traces + user object always leaked (#7) |
+| Business logic | @security-logic | Evaluated / Findings | Race condition (#5), reversal inflation (#6) |
+| Race conditions | @security-logic | Evaluated / Findings | TOCTOU in transfer (#5) |
+| Dependencies | @security-deps | Not evaluated | No `requirements.txt` or lockfile found in target — dependency CVE check requires that file |
+
+**Residual risk:** Dependency CVEs cannot be assessed without a lockfile. The queue client (`queue_client.py`) stores messages in a process-local list (`_pending`) with no actual Redis connection — in a multi-process deployment queued imports would silently disappear; this is a reliability issue that may also mask import failures and complicate auditing. Dynamic testing (concurrent transfer requests against a live instance) would be needed to fully reproduce #5.
+
+Security-data specialist confirmed. Waiting for the auth and business-logic specialists to complete before delivering the final consolidated report.
+
+Auth specialist confirmed. Still waiting for the business-logic specialist before delivering the consolidated final report.

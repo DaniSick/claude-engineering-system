@@ -88,10 +88,17 @@ inspection commands that are safe in any project. Anything language-specific is 
 so a Go developer does not inherit a PHP allowlist.
 
 ```bash
-bash scripts/setup.sh --init                    # interactive picker
+bash scripts/setup.sh --init                    # interactive: stacks + theme
 bash scripts/setup.sh --profile node,python     # or name them directly
-bash scripts/setup.sh --help                    # list available profiles
+bash scripts/setup.sh --theme matrix            # set the status line theme
+bash scripts/setup.sh --help                    # list profiles and themes
 ```
+
+`--init` is the one command that does everything: it asks which stacks you work in, renders
+every status line theme at three pressure levels so you can pick by looking, and deploys.
+
+Later updates are just `bash scripts/setup.sh` — your theme, your profiles and your personal
+additions all survive. Nothing you chose is reset by an update.
 
 Available: `php-laravel`, `node`, `python`, `go`, `rust`. Profiles are additive and
 re-runnable — add another stack later without losing the first. To add your own, drop a

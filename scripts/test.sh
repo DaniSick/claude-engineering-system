@@ -545,6 +545,54 @@ sys.exit(0 if 'refreshInterval' not in sl else 1)
 fi
 echo
 
+# ── 10. Fresh install into an empty HOME ─────────────────────────────────────
+# Regression guard: the settings merge used to back up settings.json
+# unconditionally, so on a first install — where the file does not exist yet —
+# it raised FileNotFoundError and aborted before writing anything. The result
+# was a new user with no permissions, no hook and no status line, and no error
+# visible unless they read the traceback.
+
+echo "10. Fresh install into an empty HOME"
+_fi_home=$(mktemp -d)
+mkdir -p "${_fi_home}/.claude"
+
+if HOME="$_fi_home" bash "${REPO_DIR}/scripts/setup.sh" --theme matrix >/dev/null 2>&1; then
+    if [[ -f "${_fi_home}/.claude/settings.json" ]]; then
+        pass "settings.json written on first install"
+
+        fi_report=$(python3 - "${_fi_home}/.claude/settings.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1]))
+perms = len(s.get("permissions", {}).get("allow", []))
+hooks = bool(s.get("hooks"))
+cmd = s.get("statusLine", {}).get("command", "")
+print(f"{perms}|{int(hooks)}|{'CES_THEME=matrix' in cmd}")
+PY
+)
+        IFS='|' read -r fi_perms fi_hooks fi_theme <<< "$fi_report"
+        [[ "$fi_perms" -ge 16 ]] && pass "permissions present (${fi_perms})" \
+            || fail "fresh-install/perms" "expected >=16 permissions, got ${fi_perms}"
+        [[ "$fi_hooks" == "1" ]] && pass "hook configured" \
+            || fail "fresh-install/hook" "hooks block missing"
+        [[ "$fi_theme" == "True" ]] && pass "--theme written into statusLine command" \
+            || fail "fresh-install/theme" "CES_THEME not in the statusLine command"
+
+        # A plain redeploy must not reset the chosen theme.
+        HOME="$_fi_home" bash "${REPO_DIR}/scripts/setup.sh" >/dev/null 2>&1 || true
+        if grep -q "CES_THEME=matrix" "${_fi_home}/.claude/settings.json"; then
+            pass "plain redeploy preserves the chosen theme"
+        else
+            fail "fresh-install/preserve" "redeploy lost the theme"
+        fi
+    else
+        fail "fresh-install" "settings.json was never written"
+    fi
+else
+    fail "fresh-install" "setup.sh exited non-zero on an empty HOME"
+fi
+rm -rf "$_fi_home"
+echo
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
