@@ -151,11 +151,12 @@ case "$THEME" in
 esac
 
 if [[ -n "${NO_COLOR:-}" ]]; then
-    A="" D="" G="" C="" R=""
+    A="" D="" G="" C="" E="" R=""
 else
     A=$'\033[38;5;'"${CA}"'m'   # accent — the marker
     D=$'\033[38;5;'"${CD}"'m'   # dim — separators and secondary text
     G=$'\033[38;5;'"${CG}"'m'   # branch
+    E=$'\033[38;5;'"${P3}"'m'   # eyes — borrows the high-pressure colour
     R=$'\033[0m'
 fi
 
@@ -196,6 +197,33 @@ if [[ "$SHORT" == */*/* ]]; then
     _tail="${SHORT##*/}"; _rest="${SHORT%/*}"
     SHORT="${_rest##*/}/${_tail}"
 fi
+
+# ── Optional banner ──────────────────────────────────────────────────────────
+# CES_BANNER=small|full prints art above the info line. The status line is the
+# only confirmed way to show art: SessionStart hook stdout goes to the model's
+# context rather than the screen, and `systemMessage` did not render in print
+# mode (interactive mode untested). Colour works here, which it does not in
+# hook output.
+#
+# This is a persistent bar, not a one-time splash — it redraws every update and
+# holds its rows permanently. That is the trade for having it render at all.
+
+case "${CES_BANNER:-off}" in
+    full)
+        printf '%s\n' "${A}     ▄▄▄▄▄▄▄▄▄${R}"
+        printf '%s\n' "${A}   ▄█▀▀▀▀▀▀▀▀▀█▄${R}"
+        printf '%s\n' "${A}  ██   ${E}▄${A}   ${E}▄${A}   ██${R}"
+        printf '%s\n' "${A}  ██  ${E}▀▀${A}   ${E}▀▀${A}  ██${R}"
+        printf '%s\n' "${A}  ██▄▄▄▄▄▄▄▄▄▄▄██${R}"
+        printf '%s\n' "${A}  █ ▀▄▀▄▀▄▀▄▀▄▀ █${R}"
+        printf '%s\n' "${A}   ▀▀▄▄▄▄▄▄▄▄▄▀▀${R}"
+        ;;
+    small)
+        printf '%s\n' "${A}  ▄▀▀▀▀▀▀▀▄${R}"
+        printf '%s\n' "${A}  █ ${E}▀${A}   ${E}▀${A} █${R}"
+        printf '%s\n' "${A}  █▄▀▄▀▄▀▄▀█${R}"
+        ;;
+esac
 
 SEP="${D} · ${R}"
 OUT="${A}${GLYPH} ces${R}"

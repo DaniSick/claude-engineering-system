@@ -102,6 +102,7 @@ PY
 
 PROFILES=""
 THEME=""
+BANNER=""
 RUN_INIT=false
 
 _args=("$@")
@@ -115,6 +116,9 @@ for _i in "${!_args[@]}"; do
         --theme)
             THEME="${_args[$((_i+1))]:-}"
             [[ -n "$THEME" ]] || err "--theme needs a value (see --help)" ;;
+        --banner)
+            BANNER="${_args[$((_i+1))]:-}"
+            case "$BANNER" in off|small|full) ;; *) err "--banner takes off, small or full" ;; esac ;;
         --help)
             _sl="$(dirname "${BASH_SOURCE[0]}")/../statusline/ces-statusline.sh"
             cat <<'USAGE'
@@ -123,6 +127,7 @@ Usage: bash scripts/setup.sh [options]
   --verify            check deployment status without making changes
   --profile <names>   apply stack permission profiles (comma-separated)
   --theme <name>      set the status line theme
+  --banner <size>     ghost art above the status line: off, small, full
   --init              choose profiles and theme interactively, then deploy
   --help              show this help
 
@@ -213,6 +218,22 @@ if [[ "$RUN_INIT" == "true" ]]; then
             THEME="${_themes[0]}"
         fi
         log "Selected theme: ${THEME}"
+        echo
+
+        echo "Ghost banner above the status line? It is persistent — it holds"
+        echo "those rows on screen permanently, it is not a one-time splash."
+        echo
+        echo "  1) off    just the info line"
+        echo "  2) small  3 rows"
+        echo "  3) full   7 rows"
+        echo
+        read -r -p "Number (empty = off): " _bpick
+        case "$_bpick" in
+            2) BANNER="small" ;;
+            3) BANNER="full" ;;
+            *) BANNER="" ;;
+        esac
+        [[ -n "$BANNER" ]] && log "Banner: ${BANNER}" || log "Banner: off"
         echo
     fi
 fi
@@ -432,11 +453,12 @@ if ref_sl:
         print("[setup]   statusLine set to a different command (yours, left alone)")
 PY
 else
-    python3 - "$SETTINGS" "$REF_SETTINGS" "$BACKUP_DIR" "$TIMESTAMP" "$THEME" <<'PY'
+    python3 - "$SETTINGS" "$REF_SETTINGS" "$BACKUP_DIR" "$TIMESTAMP" "$THEME" "$BANNER" <<'PY'
 import json, sys, os, shutil
 
 settings_path, ref_path, backup_dir, ts = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 theme = sys.argv[5] if len(sys.argv) > 5 else ""
+banner = sys.argv[6] if len(sys.argv) > 6 else ""
 
 try:
     with open(settings_path) as f:
@@ -509,17 +531,29 @@ if ref_sl:
         print(f"[setup]     yours: {cur_cmd or cur_sl}")
         print("[setup]     to switch, replace the statusLine block in settings.json")
     else:
-        existing = re.search(r"CES_THEME=([A-Za-z0-9_-]+)", cur_cmd)
-        chosen = theme or (existing.group(1) if existing else "")
+        ex_theme = re.search(r"CES_THEME=([A-Za-z0-9_-]+)", cur_cmd)
+        ex_banner = re.search(r"CES_BANNER=([A-Za-z0-9_-]+)", cur_cmd)
+        chosen = theme or (ex_theme.group(1) if ex_theme else "")
+        # "off" clears it; empty means the flag was not passed, so keep what
+        # is already configured. Same rule the theme follows.
+        if banner == "off":
+            chosen_banner = ""
+        elif banner:
+            chosen_banner = banner
+        else:
+            chosen_banner = ex_banner.group(1) if ex_banner else ""
+        prefix = ""
+        if chosen:        prefix += f"CES_THEME={chosen} "
+        if chosen_banner: prefix += f"CES_BANNER={chosen_banner} "
         new_sl = dict(ref_sl)
-        new_sl["command"] = (f"CES_THEME={chosen} " if chosen else "") + base_cmd
+        new_sl["command"] = prefix + base_cmd
         if new_sl != cur_sl:
             settings["statusLine"] = new_sl
             changed = True
             if not cur_sl:
                 print(f"[setup]   statusLine configured (theme: {chosen or 'script default'})")
-            elif theme and existing and theme != existing.group(1):
-                print(f"[setup]   statusLine theme: {existing.group(1)} → {theme}")
+            elif theme and ex_theme and theme != ex_theme.group(1):
+                print(f"[setup]   statusLine theme: {ex_theme.group(1)} → {theme}")
             else:
                 print(f"[setup]   statusLine updated (theme: {chosen or 'script default'})")
         elif chosen:

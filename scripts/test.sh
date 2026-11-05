@@ -584,6 +584,38 @@ PY
         else
             fail "fresh-install/preserve" "redeploy lost the theme"
         fi
+
+        # Theme and banner are independent: setting one must not disturb the
+        # other, and a redeploy must keep both. A stale variable name in the
+        # theme-change message once aborted this whole path with a NameError.
+        _sj="${_fi_home}/.claude/settings.json"
+        _step() { HOME="$_fi_home" bash "${REPO_DIR}/scripts/setup.sh" "$@" >/dev/null 2>&1; }
+        _cmdline() { python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('statusLine',{}).get('command',''))" "$_sj"; }
+
+        matrix_ok=1
+        _step --banner full
+        [[ "$(_cmdline)" == *"CES_THEME=matrix"* && "$(_cmdline)" == *"CES_BANNER=full"* ]] \
+            || { fail "statusline/matrix" "--banner dropped the theme"; matrix_ok=0; }
+
+        _step --theme ice
+        [[ "$(_cmdline)" == *"CES_THEME=ice"* && "$(_cmdline)" == *"CES_BANNER=full"* ]] \
+            || { fail "statusline/matrix" "--theme dropped the banner"; matrix_ok=0; }
+
+        _step
+        [[ "$(_cmdline)" == *"CES_THEME=ice"* && "$(_cmdline)" == *"CES_BANNER=full"* ]] \
+            || { fail "statusline/matrix" "redeploy lost theme or banner"; matrix_ok=0; }
+
+        _step --banner off
+        [[ "$(_cmdline)" == *"CES_THEME=ice"* && "$(_cmdline)" != *"CES_BANNER"* ]] \
+            || { fail "statusline/matrix" "--banner off did not clear, or took the theme with it"; matrix_ok=0; }
+
+        # Any stderr from the merge means a traceback got swallowed.
+        _merge_err=$(HOME="$_fi_home" bash "${REPO_DIR}/scripts/setup.sh" --theme ghost 2>&1 >/dev/null | grep -iE "traceback|error" || true)
+        [[ -z "$_merge_err" ]] \
+            || { fail "statusline/matrix" "settings merge wrote an error: ${_merge_err:0:60}"; matrix_ok=0; }
+
+        [[ $matrix_ok -eq 1 ]] && pass "theme and banner set independently, both survive redeploy"
+        unset -f _step _cmdline
     else
         fail "fresh-install" "settings.json was never written"
     fi
