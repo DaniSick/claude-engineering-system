@@ -160,6 +160,35 @@ This repository does not bundle MCP servers, but the following are commonly usef
 
 Install any server with `claude mcp add` and it becomes available in every session. See [`docs/usage.md`](docs/usage.md) for integration notes.
 
+## Status line
+
+A compact status line showing that the system is active, plus the model, git branch, and
+context-window pressure:
+
+```
+◆ ces · Opus 5 · main · ▅▅▅░░ 45%
+```
+
+The bar shifts colour as context fills, so pressure is visible before a compaction surprises you.
+
+**Cost**: ~3.8ms per run, and it runs roughly once per turn. Claude Code triggers the status
+line on session start and on each new assistant message, debounced at 300ms, cancelling an
+in-flight run if a new trigger arrives — it is event-driven, not a render loop.
+
+Two deliberate choices keep it cheap:
+
+- **No `refreshInterval`.** Setting it would add a timed run every N seconds for data that only
+  changes between turns.
+- **No subprocesses.** The branch is read from `.git/HEAD` directly rather than by running
+  `git`, and the JSON is parsed with bash parameter expansion rather than `jq` or `python`.
+  One process per run instead of five or six.
+
+Every segment degrades independently: a missing field drops its segment rather than blanking
+the line, and the script exits 0 on any input, including malformed JSON. `NO_COLOR` is honoured.
+
+If you already have a `statusLine` configured, `setup.sh` leaves it alone and tells you how to
+switch. To customize, edit `~/.claude/statusline/ces-statusline.sh`.
+
 ## Hook
 
 `secret-scan.py` runs before `git commit` and warns if the staged diff contains credential-like patterns:

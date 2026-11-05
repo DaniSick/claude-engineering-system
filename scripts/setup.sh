@@ -273,6 +273,21 @@ done
 [[ $hook_count -eq 0 ]] && log "  (no hook scripts found in hooks/)"
 echo
 
+# ── 4b. Status line ──────────────────────────────────────────────────────────
+
+log "4b. Status line  (${CLAUDE_DIR}/statusline/)"
+sl_count=0
+[[ "$VERIFY_ONLY" == "false" ]] && mkdir -p "${CLAUDE_DIR}/statusline"
+for src in "${REPO_DIR}/statusline/"*.sh; do
+    [[ -f "$src" ]] || continue
+    sl_count=$((sl_count + 1))
+    filename="$(basename "$src")"
+    deploy_file "$src" "${CLAUDE_DIR}/statusline/${filename}" "statusline"
+    [[ "$VERIFY_ONLY" == "false" ]] && chmod +x "${CLAUDE_DIR}/statusline/${filename}"
+done
+[[ $sl_count -eq 0 ]] && log "  (no status line scripts found)"
+echo
+
 # ── 5. settings.json — safe merge ────────────────────────────────────────────
 # Merges ONLY the permissions.allow list from global/settings.json.
 # All other settings keys (theme, model, hooks, MCP, etc.) are left untouched.
@@ -350,6 +365,17 @@ if ref_hooks:
     else:
         for cmd in missing_hooks:
             print(f"[setup]   MISSING hook: {cmd}")
+
+# Check statusLine
+ref_sl = ref.get("statusLine")
+if ref_sl:
+    cur_sl = current.get("statusLine")
+    if not cur_sl:
+        print("[setup]   MISSING: statusLine not configured")
+    elif cur_sl == ref_sl:
+        print("[setup]   OK: statusLine configured")
+    else:
+        print("[setup]   statusLine set to a different command (yours, left alone)")
 PY
 else
     python3 - "$SETTINGS" "$REF_SETTINGS" "$BACKUP_DIR" "$TIMESTAMP" <<'PY'
@@ -408,6 +434,20 @@ if ref_hooks:
     if added_hooks:
         settings["hooks"] = cur_hooks
         changed = True
+
+# ── Status line (set only when absent; never clobber a user's own) ───────────
+ref_sl = ref.get("statusLine")
+if ref_sl:
+    cur_sl = settings.get("statusLine")
+    if not cur_sl:
+        settings["statusLine"] = ref_sl
+        changed = True
+        print("[setup]   statusLine configured")
+    elif cur_sl != ref_sl:
+        print("[setup]   statusLine already set to something else — left untouched")
+        print(f"[setup]     yours:  {cur_sl.get('command', cur_sl)}")
+        print(f"[setup]     ours:   {ref_sl.get('command')}")
+        print("[setup]     to switch, replace the statusLine block in settings.json")
 
 if not changed:
     print("[setup]   unchanged: settings.json")

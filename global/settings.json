@@ -19,6 +19,11 @@
       "Bash(which *)"
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline/ces-statusline.sh",
+    "padding": 0
+  },
   "hooks": {
     "PreToolUse": [
       {

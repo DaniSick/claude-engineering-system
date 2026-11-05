@@ -459,6 +459,65 @@ fi
 
 echo
 
+# ── 9. Status line ───────────────────────────────────────────────────────────
+
+echo "9. Status line (ces-statusline.sh)"
+SL="${REPO_DIR}/statusline/ces-statusline.sh"
+
+if [[ ! -f "$SL" ]]; then
+    fail "statusline" "file not found"
+else
+    # Exit 0 on every input shape — a non-zero exit blanks the line entirely.
+    sl_ok=1
+    for inp in '' 'not json' '{}' '{"context_window":{"used_percentage":null}}' \
+               '{"context_window":{"used_percentage":"abc"}}'; do
+        err=$(printf '%s' "$inp" | bash "$SL" 2>&1 >/dev/null) || true
+        code=$(printf '%s' "$inp" | bash "$SL" >/dev/null 2>&1; echo $?)
+        if [[ "$code" != "0" ]]; then
+            fail "statusline/exit" "non-zero exit (${code}) on input: ${inp:0:30}"
+            sl_ok=0
+        fi
+        if [[ -n "$err" ]]; then
+            fail "statusline/stderr" "wrote to stderr on input '${inp:0:30}': ${err:0:60}"
+            sl_ok=0
+        fi
+    done
+    [[ $sl_ok -eq 1 ]] && pass "degenerate inputs → exit 0, silent stderr"
+
+    # The context bar must read context_window, not rate_limits — both carry a
+    # key named used_percentage.
+    out=$(echo '{"context_window":{"used_percentage":34},"rate_limits":{"five_hour":{"used_percentage":91}}}' \
+          | NO_COLOR=1 bash "$SL" 2>/dev/null)
+    if [[ "$out" == *"34%"* && "$out" != *"91%"* ]]; then
+        pass "reads context_window, not rate_limits"
+    else
+        fail "statusline/collision" "expected 34%, not 91% — got: ${out}"
+    fi
+
+    # No subprocess spawning: the cost argument depends on this. `$((` is
+    # arithmetic expansion and forks nothing, so only `$(` followed by a
+    # non-paren counts. Comments are stripped first — they contain backticks.
+    forks=$(sed 's/#.*//' "$SL" | grep -nE '\$\([^(]|`' || true)
+    if [[ -n "$forks" ]]; then
+        fail "statusline/forks" "command substitution found: ${forks%%$'\n'*}"
+    else
+        pass "no command substitution (no forks)"
+    fi
+
+    # The deployed config must not carry refreshInterval, which would add timed
+    # runs for data that only changes between turns.
+    if python3 -c "
+import json,sys
+sl = json.load(open('${REPO_DIR}/global/settings.json')).get('statusLine', {})
+sys.exit(0 if 'refreshInterval' not in sl else 1)
+" 2>/dev/null; then
+        pass "no refreshInterval (event-driven only)"
+    else
+        fail "statusline/interval" "refreshInterval set — adds periodic runs"
+    fi
+fi
+echo
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
