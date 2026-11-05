@@ -7,6 +7,21 @@ A version-controlled personal configuration for [Claude Code](https://claude.ai/
 
 Goal: fewer wasted turns on real engineering tasks. See [`docs/token-budget.md`](docs/token-budget.md) for exactly what it costs in input tokens per turn and when it saves vs. when it does not.
 
+## Before / after
+
+**Security review** — without CES, Claude gives a generic checklist.
+With CES, `/sec-audit` runs `@security-auth`, `@security-injection`, and `@security-web` in
+parallel, then produces a structured table with `CONFIRMED` / `HYPOTHESIS` labels, file:line
+evidence, and a compound-chain analysis pass.
+
+**Bug investigation** — without CES, Claude patches the symptom, fails, and retries without
+direction. With CES, `/investigate-bug` enforces root-cause tracing before any edit, and
+escalates to a fresh investigation after two consecutive failures on the same problem.
+
+**Response verbosity** — without CES, every response is prose-heavy. With `/mode ninja`,
+outputs are diff + one line. With `/mode ferb` (default), results come first with a ≤3-line
+explanation, no re-reading files already in context.
+
 ## What it installs
 
 | Component | Deploys to | Loaded when |
@@ -89,7 +104,20 @@ Available in every Claude Code session as read-only specialists. They cannot mod
 /mode                — switch response mode (ferb/explained/auto)
 ```
 
-> **Compatibility note**: `~/.claude/commands/` as a global skill location was not confirmed in the Claude Code 2.1.87 docs when this repository was first published. On recent Claude Code versions the directory is loaded. If skills do not appear in a fresh session, see [`docs/usage.md`](docs/usage.md#verifying-global-skills) for verification steps and fallbacks.
+Skills deploy to `~/.claude/commands/` and are available in every session, confirmed in Claude Code 2.1.87+.
+
+## MCP servers
+
+This repository does not bundle MCP servers, but the following are commonly useful alongside it:
+
+| Server | Use case |
+|--------|----------|
+| [Filesystem](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) | Read/write files outside the working directory |
+| [GitHub](https://github.com/modelcontextprotocol/servers/tree/main/src/github) | PR review, issues, CI status |
+| [Fetch](https://github.com/modelcontextprotocol/servers/tree/main/src/fetch) | Retrieve docs, specs, or changelogs from URLs |
+| [SQLite](https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite) | Inspect local databases during debugging |
+
+Install any server with `claude mcp add` and it becomes available in every session. See [`docs/usage.md`](docs/usage.md) for integration notes.
 
 ## Hook
 

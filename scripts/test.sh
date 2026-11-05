@@ -356,6 +356,109 @@ ENDFIXTURE
 fi
 echo
 
+# ── 8. Personal additions preservation ───────────────────────────────────────
+
+echo "8. Personal additions preservation (deploy_claude_md logic)"
+
+_pa_dir=$(mktemp -d)
+trap '[[ -n "${_pa_dir:-}" ]] && rm -rf "$_pa_dir"' EXIT
+
+# Build a fake deployed CLAUDE.md with real custom content in the personal block
+cp "${REPO_DIR}/global/CLAUDE.md" "${_pa_dir}/CLAUDE.md"
+python3 - "${_pa_dir}/CLAUDE.md" <<'PY'
+import sys, re
+path = sys.argv[1]
+content = open(path).read()
+replacement = (
+    "<!-- CES:PERSONAL_START -->\n"
+    "## Personal additions\n"
+    "Response mode: ninja\n"
+    "Custom rule: test fixture — do not remove\n"
+    "<!-- CES:PERSONAL_END -->"
+)
+content = re.sub(r'<!-- CES:PERSONAL_START -->.*?<!-- CES:PERSONAL_END -->', replacement, content, flags=re.DOTALL)
+open(path, 'w').write(content)
+PY
+
+# Step 1 — extraction: same logic as deploy_claude_md
+personal_block=$(python3 - "${_pa_dir}/CLAUDE.md" <<'PY'
+import sys, re
+content = open(sys.argv[1]).read()
+m = re.search(r'<!-- CES:PERSONAL_START -->.*?<!-- CES:PERSONAL_END -->', content, re.DOTALL)
+if m:
+    block = m.group(0)
+    placeholder_lines = {
+        '<!-- CES:PERSONAL_START -->', '## Personal additions',
+        '_This section is preserved when you run `bash scripts/setup.sh`. Edit it freely — git pull + redeploy will never overwrite it._',
+        'Suggested uses:',
+        '- Set a default response mode (applies every session): `Response mode: ferb`',
+        '- Add stack-specific rules, e.g. "This project uses Livewire; prefer wire:model over Alpine"',
+        '- Override any principle above for your workflow',
+        '<!-- CES:PERSONAL_END -->'
+    }
+    actual_lines = [l.strip() for l in block.splitlines() if l.strip() and l.strip() not in placeholder_lines]
+    if actual_lines:
+        print(block)
+PY
+)
+
+if [[ "$personal_block" == *"Response mode: ninja"* ]]; then
+    pass "personal-extract: custom content detected"
+else
+    fail "personal-extract" "custom content not found in extracted block"
+fi
+
+# Step 2 — injection: deploy a fresh CLAUDE.md, re-inject the block
+cp "${REPO_DIR}/global/CLAUDE.md" "${_pa_dir}/fresh.md"
+_pa_tmp=$(mktemp)
+printf '%s' "$personal_block" > "$_pa_tmp"
+python3 - "${_pa_dir}/fresh.md" "$_pa_tmp" <<'PY'
+import sys, re
+dst, block_path = sys.argv[1], sys.argv[2]
+content = open(dst).read()
+block = open(block_path).read()
+content = re.sub(r'<!-- CES:PERSONAL_START -->.*?<!-- CES:PERSONAL_END -->', block, content, flags=re.DOTALL)
+open(dst, 'w').write(content)
+PY
+rm -f "$_pa_tmp"
+
+if grep -q "Response mode: ninja" "${_pa_dir}/fresh.md"; then
+    pass "personal-inject: content survives redeploy"
+else
+    fail "personal-inject" "content not found after injection into fresh deploy"
+fi
+
+# Step 3 — placeholder-only content is NOT preserved (no user additions yet)
+cp "${REPO_DIR}/global/CLAUDE.md" "${_pa_dir}/placeholder.md"
+placeholder_block=$(python3 - "${_pa_dir}/placeholder.md" <<'PY'
+import sys, re
+content = open(sys.argv[1]).read()
+m = re.search(r'<!-- CES:PERSONAL_START -->.*?<!-- CES:PERSONAL_END -->', content, re.DOTALL)
+if m:
+    block = m.group(0)
+    placeholder_lines = {
+        '<!-- CES:PERSONAL_START -->', '## Personal additions',
+        '_This section is preserved when you run `bash scripts/setup.sh`. Edit it freely — git pull + redeploy will never overwrite it._',
+        'Suggested uses:',
+        '- Set a default response mode (applies every session): `Response mode: ferb`',
+        '- Add stack-specific rules, e.g. "This project uses Livewire; prefer wire:model over Alpine"',
+        '- Override any principle above for your workflow',
+        '<!-- CES:PERSONAL_END -->'
+    }
+    actual_lines = [l.strip() for l in block.splitlines() if l.strip() and l.strip() not in placeholder_lines]
+    if actual_lines:
+        print(block)
+PY
+)
+
+if [[ -z "$placeholder_block" ]]; then
+    pass "personal-placeholder: unmodified placeholder not extracted"
+else
+    fail "personal-placeholder" "placeholder-only content incorrectly extracted"
+fi
+
+echo
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

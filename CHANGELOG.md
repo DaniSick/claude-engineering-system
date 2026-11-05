@@ -2,6 +2,37 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-11-05
+
+### Added
+- **Personal additions block** in `global/CLAUDE.md`: a `<!-- CES:PERSONAL_START/END -->` section
+  at the bottom where users set their default mode, stack rules, or any overrides.
+  Survived `git pull && bash scripts/setup.sh` — user content is never overwritten.
+- `deploy_claude_md()` in `scripts/setup.sh`: extracts the personal block from the existing
+  `~/.claude/CLAUDE.md` before overwriting, writes it to a temp file, and re-injects it after
+  deploy. Shell-safe: no heredoc interpolation of user content.
+- `/mode` persistence tip now explicitly references the personal additions section in
+  `~/.claude/CLAUDE.md` for a global default, and the project `CLAUDE.md` for a per-project one.
+
+### Changed
+- `~/.claude/commands/` compatibility note updated: confirmed working in Claude Code 2.1.87+ —
+  skills deploy globally and appear in every session. The uncertainty warning is removed.
+- `templates/project-CLAUDE.md`: replaced bare `TODO` placeholders in code blocks with
+  concrete commented-out examples across all major stacks.
+
+## [0.3.1] — 2026-10-23
+
+### Added
+- Cross-reference validation in `scripts/test.sh` (section 7): checks that every `@agent`
+  and `` `/command` `` reference in `global/CLAUDE.md` and `.claude/commands/` resolves to a
+  real file. Self-tests with agent and command fixtures included.
+- Risk-based escalation rules in `global/CLAUDE.md`: explicit triggers for `deep` effort
+  (auth, sessions, schema migrations, public API contracts, shared utilities), a performance
+  trigger for new ORM queries inside loops, and a failure-recovery rule that escalates to
+  `/investigate-bug` after two consecutive failures on the same problem.
+- Expanded permissions in `global/settings.json`: PHP/Composer/Laravel commands and
+  `npm run lint` / `npm run typecheck` added to the allowlist (16 new entries, total 32).
+
 ## [0.3.0] — 2026-10-23
 
 ### Added

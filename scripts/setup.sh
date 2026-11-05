@@ -157,16 +157,21 @@ PY
 
     deploy_file "$src" "$dst" "root"
 
-    # Inject personal block back if one existed
+    # Inject personal block back if one existed.
+    # Write to a temp file to avoid shell-interpolation issues with quotes/backslashes.
     if [[ -n "$personal_block" && "$VERIFY_ONLY" == "false" ]]; then
-        python3 - "$dst" <<PY
+        local tmp_block
+        tmp_block="$(mktemp)"
+        printf '%s' "$personal_block" > "$tmp_block"
+        python3 - "$dst" "$tmp_block" <<'PY'
 import sys, re
-dst = sys.argv[1]
+dst, block_path = sys.argv[1], sys.argv[2]
 content = open(dst).read()
-block = """${personal_block}"""
+block = open(block_path).read()
 content = re.sub(r'<!-- CES:PERSONAL_START -->.*?<!-- CES:PERSONAL_END -->', block, content, flags=re.DOTALL)
 open(dst, 'w').write(content)
 PY
+        rm -f "$tmp_block"
         log "  personal additions block restored"
     fi
 }
@@ -188,11 +193,10 @@ echo
 
 # ── 3. Commands (global) ─────────────────────────────────────────────────────
 # ~/.claude/commands/ is the global equivalent of .claude/commands/ in a project.
-# STATUS: Not yet confirmed in official docs for 2.1.87.
-# The files are deployed here; verify by checking if they appear as skills
-# in a session started outside this repository.
+# Confirmed working in Claude Code 2.1.87+: skills deployed here appear in every
+# session regardless of the working directory.
 
-log "3. Commands  (${CLAUDE_DIR}/commands/)  [global — see verification note]"
+log "3. Commands  (${CLAUDE_DIR}/commands/)"
 [[ "$VERIFY_ONLY" == "false" ]] && mkdir -p "${CLAUDE_DIR}/commands"
 for src in "${REPO_DIR}/.claude/commands/"*.md; do
     [[ -f "$src" ]] || continue

@@ -38,22 +38,23 @@ Key conventions:
 
 ```bash
 # Start development server
-# e.g. pnpm dev
-# e.g. docker compose up && go run ./cmd/server
-TODO
+# pnpm dev
+# php artisan serve
+# docker compose up
 
 # Run tests
-# e.g. pnpm test
-# e.g. pytest -x
-TODO
+# pnpm test
+# ./vendor/bin/pest
+# pytest -x
 
 # Static analysis / lint
-# e.g. pnpm lint
-# e.g. mypy src/
-TODO
+# pnpm lint
+# ./vendor/bin/phpstan analyse src/ --level=8
+# mypy src/
 
 # Format / fix
-TODO
+# pnpm format
+# ./vendor/bin/php-cs-fixer fix src/
 ```
 
 ## Constraints
