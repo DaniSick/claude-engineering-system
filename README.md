@@ -26,14 +26,25 @@ already in context.
 
 ## Validation status
 
-**The effectiveness claims in this repository are unvalidated.** The token costs are measured
-(`scripts/measure-tokens.sh`); the benefits are not. No A/B comparison has been run, and
-[`docs/eval-scenarios.md`](docs/eval-scenarios.md) specifies 22 scenarios with zero recorded
-results.
+One A/B eval has been run. **It found no detection improvement.**
 
-What is verified: the system deploys correctly (33 passing tests), the hook detects its
-fixture patterns, and global skills load in Claude Code 2.1.87. What is not: whether any of
-it improves outcomes. Treat the design as reasoned, not proven.
+`bash scripts/eval-security.sh` scores the system against a blind security fixture, with the
+baseline running in an isolated `HOME` that has no configuration deployed. In the first run
+(3 trials per condition), both conditions found **6 of 6** planted vulnerabilities with **zero**
+false positives. Recall was saturated: a current model finds these without help, so the fixture
+cannot discriminate.
+
+What did differ, consistently across all trials: the configured condition reproduced the audit
+table, `CONFIRMED` / `NOT VERIFIED` status labels, explicit negative findings, and scope caveats
+specified in `global/CLAUDE.md`. The baseline wrote good prose but volunteered those less
+reliably. That is a reproducible difference in report discipline — not evidence of better
+detection.
+
+Full data and the honest read: [`docs/eval/RESULTS.md`](docs/eval/RESULTS.md).
+
+So: token costs are measured. Report structure is measured. **Whether the system improves
+engineering outcomes remains unproven** — a harder fixture (multi-file, compound chains,
+realistic signal-to-noise) is the next step. Treat the design as reasoned, not proven.
 
 ## What it installs
 

