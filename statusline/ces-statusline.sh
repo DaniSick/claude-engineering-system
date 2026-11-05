@@ -213,23 +213,30 @@ fi
 # row without changing its visible width; miscounting one row is what makes
 # this kind of art look crooked.
 
+# Laid out on a fixed grid — 21 columns for full, 15 for small — with an odd
+# width so there is a true centre column. Four tones give the skull volume
+# without adding any theme configuration: G is rim light along the cranium,
+# A is bone, D is the socket void, E is the pupil burning inside it. Colour
+# spans never change a row's visible width, which is what makes hand-counted
+# art come out crooked.
+
 case "${CES_BANNER:-off}" in
     full)
-        printf '%s\n' "${A}     ▄▄▄███████▄▄▄${R}"
-        printf '%s\n' "${A}   ▄███████████████▄${R}"
-        printf '%s\n' "${A}  ███████████████████${R}"
-        printf '%s\n' "${A}  ███▀▀▀▀▀▀▀▀▀▀▀▀▀███${R}"
-        printf '%s\n' "${A}  ██ ▜█▄       ▄█▛ ██${R}"
-        printf '%s\n' "${A}  ██  ▐${E}█${A}▌     ▐${E}█${A}▌  ██${R}"
-        printf '%s\n' "${A}  ███▄    ▄▀▄    ▄███${R}"
-        printf '%s\n' "${A}   █████▄▄▄▄▄▄▄█████${R}"
-        printf '%s\n' "${A}    ██▌█▌█▌█▌█▌█▌██${R}"
-        printf '%s\n' "${A}      ▀▀ ▀▀ ▀▀ ▀▀${R}"
+        printf '%s\n' "${A}    ▄▄${G}▓${A}███████${G}▓${A}▄▄${R}"
+        printf '%s\n' "${A}  ▄${G}▓${A}█████████████${G}▓${A}▄${R}"
+        printf '%s\n' "${G}▓${A}███████████████████${G}▓${R}"
+        printf '%s\n' "${A}█████████████████████${R}"
+        printf '%s\n' "${A}██${D}▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀${A}██${R}"
+        printf '%s\n' "${A}██ ▐${D}███${A}▌     ▐${D}███${A}▌ ██${R}"
+        printf '%s\n' "${A}██ ▐${D}█${E}●${D}█${A}▌     ▐${D}█${E}●${D}█${A}▌ ██${R}"
+        printf '%s\n' "${A} ███▄▄   ${D}▄▀▄${A}   ▄▄███${R}"
+        printf '%s\n' "${A}  ████▄▄▄▄▄▄▄▄▄████${R}"
+        printf '%s\n' "${A}   ██▌${D}▐${A}█▌${D}▐${A}█▌${D}▐${A}█▌${D}▐${A}██${R}"
         ;;
     small)
-        printf '%s\n' "${A}    ▄█████████▄${R}"
-        printf '%s\n' "${A}   █▀ ▐${E}█${A}▌ ▐${E}█${A}▌ ▀█${R}"
-        printf '%s\n' "${A}    █▌█▌█▌█▌█▌█${R}"
+        printf '%s\n' "${A} ▄${G}▓${A}█████████${G}▓${A}▄${R}"
+        printf '%s\n' "${A}█ ▐${D}█${E}●${D}█${A}▌ ▐${D}█${E}●${D}█${A}▌ █${R}"
+        printf '%s\n' "${A} █▌${D}▐${A}█▌${D}▐${A}█▌${D}▐${A}█▌${D}▐${A}█${R}"
         ;;
 esac
 
