@@ -531,6 +531,31 @@ else
         fail "statusline/themes-flag" "--themes hung or exited non-zero"
     fi
 
+    # Banner symmetry. Every row of a variant must share one centre axis, or
+    # the skull renders crooked. This is checked mechanically because colour
+    # spans do not change a row's visible width — counting characters in the
+    # source does not reveal a misalignment, and three separate edits to this
+    # art shipped a row off-axis before the check existed.
+    banner_ok=1
+    for variant in full small; do
+        axes=$(echo '{"context_window":{"used_percentage":40}}' \
+               | CES_BANNER="$variant" NO_COLOR=1 bash "$SL" 2>/dev/null \
+               | head -n -1 \
+               | awk '{
+                     line = $0
+                     lead = match(line, /[^ ]/) - 1
+                     body = line; sub(/^ +/, "", body)
+                     print lead * 2 + length(body)
+                 }' | sort -u)
+        count=$(printf '%s\n' "$axes" | grep -c . || true)
+        if [[ "$count" -ne 1 ]]; then
+            fail "statusline/banner-axis" \
+                 "${variant}: rows do not share a centre axis (doubled axes: $(printf '%s' "$axes" | tr '\n' ' '))"
+            banner_ok=0
+        fi
+    done
+    [[ $banner_ok -eq 1 ]] && pass "banner rows share one centre axis in both sizes"
+
     # The deployed config must not carry refreshInterval, which would add timed
     # runs for data that only changes between turns.
     if python3 -c "

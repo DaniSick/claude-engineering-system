@@ -135,46 +135,44 @@ THEME="${CES_THEME:-ghost}"
 # the deep end of each hue ramp (22, 24, 94) is too dark to read and is avoided.
 # Swap GLYPH for anything your font renders: ᗝ ◆ ▲ ▮ ❄ ✦ ◈ ☾ ❉ ⬢ ·
 
-# B1..B5 are the banner's shading ramp, darkest to brightest, lit from above.
-# They are separate from the text colours because art needs more steps than a
-# status line does: CA/CD/CG must stay legible as text, while B1..B5 only have
-# to read as one surface curving away from the light.
+# Three banner tones, not five. A five-step ramp spread over ten rows reads as
+# a muddy gradient; three let the skull break into zones a viewer can actually
+# parse — lit dome, bone, shadowed jaw — which is what gives it structure.
+# BD dark, BM mid, BL light. Separate from the text colours, which have to stay
+# legible as text while these only have to read as one surface.
 
 case "$THEME" in
     ghost)    # dark violet, faintly haunted
         GLYPH="ᗝ"; CA=141; CD=103; CG=177; P1=97;  P2=141; P3=205
-        B1=54;  B2=61;  B3=97;  B4=141; B5=183 ;;
+        BD=60;  BM=141; BL=183 ;;
     ember)    # warm, embers banking down
         GLYPH="▲"; CA=208; CD=137; CG=180; P1=130; P2=179; P3=203
-        B1=52;  B2=94;  B3=130; B4=208; B5=223 ;;
+        BD=94;  BM=208; BL=223 ;;
     matrix)   # terminal green
         GLYPH="▮"; CA=46;  CD=71;  CG=84;  P1=65;  P2=112; P3=226
-        B1=22;  B2=28;  B3=34;  B4=46;  B5=120 ;;
+        BD=28;  BM=46;  BL=120 ;;
     ice)      # cold blues
         GLYPH="❄"; CA=81;  CD=109; CG=117; P1=66;  P2=74;  P3=147
-        B1=17;  B2=24;  B3=31;  B4=81;  B5=159 ;;
+        BD=24;  BM=81;  BL=159 ;;
     mono)     # no hue at all, only weight
         GLYPH="·"; CA=252; CD=243; CG=248; P1=243; P2=248; P3=255
-        B1=236; B2=240; B3=244; B4=250; B5=255 ;;
+        BD=239; BM=248; BL=255 ;;
     *)        # the original
         GLYPH="◆"; CA=110; CD=244; CG=108; P1=109; P2=179; P3=174
-        B1=17;  B2=24;  B3=67;  B4=110; B5=153 ;;
+        BD=24;  BM=110; BL=153 ;;
 esac
 
 if [[ -n "${NO_COLOR:-}" ]]; then
     A="" D="" G="" C="" R=""
-    S1="" S2="" S3="" S4="" S5="" V=""
+    SD="" SM="" SL="" V=""
 else
     A=$'\033[38;5;'"${CA}"'m'   # accent — the marker
     D=$'\033[38;5;'"${CD}"'m'   # dim — separators and secondary text
     G=$'\033[38;5;'"${CG}"'m'   # branch
     R=$'\033[0m'
-    # Banner shading, darkest to brightest.
-    S1=$'\033[38;5;'"${B1}"'m'
-    S2=$'\033[38;5;'"${B2}"'m'
-    S3=$'\033[38;5;'"${B3}"'m'
-    S4=$'\033[38;5;'"${B4}"'m'
-    S5=$'\033[38;5;'"${B5}"'m'
+    SD=$'\033[38;5;'"${BD}"'m'  # shadow
+    SM=$'\033[38;5;'"${BM}"'m'  # bone
+    SL=$'\033[38;5;'"${BL}"'m'  # lit
     # Sockets and nasal cavity: true black, so they read as holes punched
     # through the bone rather than as dark-coloured fill.
     V=$'\033[38;5;16m'
@@ -242,21 +240,24 @@ fi
 
 case "${CES_BANNER:-off}" in
     full)
-        printf '%s\n' "${S5}    ▄▄█████████▄▄${R}"
-        printf '%s\n' "${S5}  ▄█${S4}█████████████${S5}█▄${R}"
-        printf '%s\n' "${S5} ▄█${S4}███████████████${S5}█▄${R}"
-        printf '%s\n' "${S4}██${S3}█████████████████${S4}██${R}"
-        printf '%s\n' "${S3}██${S2}▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀${S3}██${R}"
-        printf '%s\n' "${S3}██${S2} ▐${V}███${S2}▌     ▐${V}███${S2}▌ ${S3}██${R}"
-        printf '%s\n' "${S3}██${S2} ▐${V}███${S2}▌     ▐${V}███${S2}▌ ${S3}██${R}"
-        printf '%s\n' "${S2} ███▄▄   ${V}▄▀▄${S2}   ▄▄███${R}"
-        printf '%s\n' "${S2}  ████${S1}▄▄▄▄▄▄▄▄▄${S2}████${R}"
-        printf '%s\n' "${S3}   ██▌${S1}▐${S3}█▌${S1}▐${S3}█▌${S1}▐${S3}█▌${S1}▐${S3}██${R}"
+        # Zones, not a gradient: rows 1-2 are the lit dome, 3-7 the bone face,
+        # 8-10 the jaw falling into shadow. Dark is reserved for what is
+        # genuinely occluded — under the brow, beneath the cheek, between teeth.
+        printf '%s\n' "${SL}    ▄▄█████████▄▄${R}"
+        printf '%s\n' "${SL}  ▄███████████████▄${R}"
+        printf '%s\n' "${SM} ▄█████████████████▄${R}"
+        printf '%s\n' "${SM}█████████████████████${R}"
+        printf '%s\n' "${SM}██${SD}▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀${SM}██${R}"
+        printf '%s\n' "${SM}██ ▐${V}███${SM}▌     ▐${V}███${SM}▌ ██${R}"
+        printf '%s\n' "${SM}██ ▐${V}███${SM}▌     ▐${V}███${SM}▌ ██${R}"
+        printf '%s\n' "${SM} ███▄▄   ${V}▄▀▄${SM}   ▄▄███${R}"
+        printf '%s\n' "${SD}  █████████████████${R}"
+        printf '%s\n' "${SM}   ██▌${SD}▐${SM}█▌${SD}▐${SM}█▌${SD}▐${SM}█▌${SD}▐${SM}██${R}"
         ;;
     small)
-        printf '%s\n' "${S5} ▄█${S4}█████████${S5}█▄${R}"
-        printf '%s\n' "${S3}█${S2} ▐${V}███${S2}▌ ▐${V}███${S2}▌ ${S3}█${R}"
-        printf '%s\n' "${S3} █▌${S1}▐${S3}█▌${S1}▐${S3}█▌${S1}▐${S3}█▌${S1}▐${S3}█${R}"
+        printf '%s\n' "${SL} ▄███████████▄${R}"
+        printf '%s\n' "${SM}█ ▐${V}███${SM}▌ ▐${V}███${SM}▌ █${R}"
+        printf '%s\n' "${SM} █▌${SD}▐${SM}█▌${SD}▐${SM}█▌${SD}▐${SM}█▌${SD}▐${SM}█${R}"
         ;;
 esac
 
