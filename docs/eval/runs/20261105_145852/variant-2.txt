@@ -1,0 +1,23 @@
+I found 13 issues in `account_service.py`: 4 critical, 4 high, 2 medium and 3 low. I only reviewed this one file. I didn't check the callers, the session middleware or `tools/export.py`.
+
+| # | Finding | Evidence | Impact | Priority | Proposed Fix | Status |
+|---|---------|----------|--------|----------|--------------|--------|
+| 1 | **SQL injection** in `find_by_username`: the username is pasted straight into the query text | `account_service.py:34` | An attacker can read the whole database, or log in without a password (see #3) | Critical | Pass the username as a `?` parameter, as `find_by_id` already does at `:46` | CONFIRMED |
+| 2 | **Command injection** in `export_account_data`: `filename` goes into a shell command run with `shell=True` | `:120-123` | A filename like `x; rm -rf /` runs arbitrary commands on the server | Critical | Pass the command as a list and drop `shell=True` | CONFIRMED |
+| 3 | **Hardcoded live secret** `SIGNING_KEY = "sk_live_..."`, also used as the password hashing key | `:19`, `:75` | Anyone with the source has the key. With it, #1 becomes a login bypass: inject a `UNION SELECT` that returns `role='admin'` and a hash the attacker computed for a password they chose | Critical | Load it from env or a secrets manager, rotate it now, and use a separate key for password hashing | CONFIRMED |
+| 4 | **Path traversal / arbitrary file read**: `os.path.join(EXPORT_DIR, filename)` with no checks, and the file's bytes are returned | `:119`, `:126-127` | `../../etc/shadow` escapes the export folder, and an absolute path like `/etc/passwd` ignores it entirely. Either way the file is returned to the caller | Critical | Use a server-generated filename, or resolve the path and confirm it stays inside `EXPORT_DIR` | CONFIRMED |
+| 5 | **Plaintext password written to logs** on successful login | `:60-65` | Every user's password ends up in the logs, and from there in log storage and backups | High | Remove `password` from the log call | CONFIRMED |
+| 6 | **Missing ownership check in `update_profile`**: `session_user_id` is never used, so anyone can edit any account | `:83-100` | A user can change someone else's email and then take the account over with a password reset | High | Require `session_user_id == target_user_id` or an admin role, same as `deactivate_account` at `:160` | CONFIRMED |
+| 7 | **Missing ownership check in `get_profile`**: `session_user_id` is never used | `:103-114` | Any user can read any other user's email and role | High | Same check as #6 | CONFIRMED |
+| 8 | **Missing ownership check in `export_account_data`**: it takes any `user_id` and has no session parameter at all | `:117` | Any caller can download any user's full data export | High | Take the session user and check ownership or admin role | CONFIRMED (that a caller can actually supply someone else's ID is NOT VERIFIED) |
+| 9 | **Weak password hashing**: one SHA-256 pass, a single key shared by all users, no per-user salt | `:72-75` | A leaked database can be cracked quickly, and users with the same password get the same hash | Medium | Use argon2, bcrypt or scrypt, and rehash each password at its next login | CONFIRMED |
+| 10 | **Export row cap can be bypassed**: a negative `limit` skips the `>1000` check, and SQLite treats `LIMIT -1` as no limit | `:132-133`, `:139` | Returns every user in one call | Medium | Clamp the value: `limit = max(1, min(limit, 1000))` | CONFIRMED (whether this endpoint is admin-only is NOT VERIFIED) |
+| 11 | **Hash compared with `==`**, which isn't constant-time | `:59` | Small timing leak | Low | `hmac.compare_digest` | CONFIRMED |
+| 12 | **Failed export goes unnoticed**: `check=False` ignores a failed export, then whatever file is already at that path is read | `:124-126` | A user could receive an older export, possibly someone else's | Low | Use `check=True` and a unique temporary file per export | CONFIRMED |
+| 13 | **Deactivated users can still act**: `find_by_id` doesn't filter on `active` | `:157`, `:45-47` | A deactivated admin can still deactivate other accounts if their session is still valid | Low | Add `AND active = 1` | HYPOTHESIS (depends on the middleware) |
+
+Also worth noting:
+- **Login timing (not a separate row):** an unknown username returns at `:56` before any hashing happens. That timing difference lets an attacker work out which usernames exist.
+- **Docstring vs. code:** the docstring says callers have already passed the session middleware (`:4-5`). That middleware confirms who the user is, but it doesn't stop a user acting on someone else's account. That is why #6, #7 and #8 matter.
+
+Fix #1–#4 first, and rotate the key from #3 regardless of anything else, because it's already exposed in the source.

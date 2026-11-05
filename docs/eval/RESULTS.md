@@ -67,13 +67,81 @@ Two entries in `ANSWER-KEY.md` were wrong when written, and the runs exposed the
 
 Both are now reflected in the answer key.
 
-## What this run does and does not establish
+---
 
-**Establishes**: the harness works, isolation is sound, and the system reliably changes report
-structure. Also that the current fixture is too easy to measure detection ability.
+## Run 20261105_145852 — ablation
 
-**Does not establish**: that the system improves outcomes on real tasks. The headline claim
-remains unvalidated.
+**Question**: do the five sections hypothesized redundant with frontier-model defaults carry
+any measurable weight? Variant under test: `docs/eval/variants/trimmed.md`, which drops
+"Detect before assuming", "UI/UX tasks", "Investigate before modifying" steps 1–4, "Security
+rules", and "What not to do" — 729 tokens, 17% of the file. Everything the Mode precedence rule
+references is retained.
+
+Three conditions, 3 trials each, scored with `scripts/score-eval.sh`.
+
+| Condition | Format score | Core recall |
+|---|---|---|
+| baseline (no config) | 1.0 / 5 | 6 / 6 |
+| variant (trimmed) | 3.7 / 5 | 6 / 6 |
+| system (full) | 4.3 / 5 | 6 / 6 |
+
+### The result is inconclusive, and the reason matters
+
+The same `system` condition scored **5.0** in run 20261105_144238 and **4.3** here. That
+run-to-run variance (0.7) is **larger than the measured gap between full and trimmed** (0.6).
+At n=3 this experiment cannot separate signal from noise, and no conclusion about the trim
+should be drawn from the headline means.
+
+### What the per-marker breakdown does show
+
+| Marker | Specified in `CLAUDE.md`? | Configured conditions, both runs |
+|---|---|---|
+| Findings table | Yes, explicitly | **9 / 9** |
+| `CONFIRMED` / `NOT VERIFIED` labels | Yes, explicitly | **9 / 9** |
+| Explicit negative findings | No — emergent | 3/3, then 1/3, then 0/3 |
+| Scope caveats | No — emergent | 3/3, 3/3, 2/3 |
+
+**Explicitly instructed output conventions held at 100% in both the full and trimmed files.
+Emergent ones were volatile in every condition, including the full one.** The 0.6 gap sits
+entirely in markers that no section specifies — including the sections the trim removed.
+
+Note that "state what you examined rather than declaring a surface clean" is specified in
+`agents/security.md`, which was never loaded in these runs because no agent was invoked. Its
+volatility is therefore expected: nothing in the loaded context asked for it.
+
+### Practical read
+
+The trim did not measurably harm anything the file actually instructs. That is weaker than
+"the trim is safe" — n=3 cannot establish that — but it is the honest state of the evidence:
+
+- **Recall**: unaffected (6/6 everywhere, though the fixture is saturated and cannot discriminate).
+- **Instructed format conventions**: unaffected (9/9 both conditions).
+- **Emergent conventions**: noisy everywhere; the gap is not attributable to the trim.
+
+Resolving this properly needs roughly n=10 per condition — about 30 sessions. Whether that is
+worth 729 tokens per turn is a cost judgment, not a technical one.
+
+---
+
+## What these runs do and do not establish
+
+**Establishes**:
+
+- The harness works and the baseline isolation is sound.
+- Configured vs. unconfigured is a large, consistent effect on report structure: baseline scored
+  1.0 and 1.7 across two runs; every configured condition scored 3.7–5.0. That gap reproduced.
+- Output conventions the file states explicitly are followed reliably (9/9); conventions it only
+  implies are not (volatile in every condition).
+- The current fixture is saturated and cannot measure detection ability.
+
+**Does not establish**:
+
+- That the system improves engineering outcomes on real tasks. The headline claim is still unvalidated.
+- That the 17% trim is safe, or that it is harmful. The experiment is underpowered at n=3.
+
+**Methodological lesson for anyone extending this**: measure run-to-run variance of a single
+condition before interpreting a between-condition gap. This ablation would have looked like a
+clean 0.6-point degradation had the earlier run not happened to provide a variance estimate.
 
 ## Next fixture, if this is pursued
 

