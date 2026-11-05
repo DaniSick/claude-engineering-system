@@ -22,6 +22,23 @@
 
 # No `set -e`: a non-zero exit blanks the status line. Failures degrade instead.
 
+# `--themes` renders every theme at three pressure levels so a choice can be
+# made by looking rather than by reading colour codes. It re-execs this script
+# once per sample; that spawning only happens here, never on the status path.
+if [[ "${1:-}" == "--themes" ]]; then
+    _self="${BASH_SOURCE[0]}"
+    for _t in ghost ember matrix ice mono default; do
+        printf '\n  %s\n' "$_t"
+        for _p in 30 70 92; do
+            printf '    '
+            printf '%s' "{\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"$PWD\"},\"context_window\":{\"used_percentage\":$_p}}" \
+                | CES_THEME="$_t" bash "$_self"
+        done
+    done
+    printf '\n  Set one with CES_THEME, or edit THEME in %s\n\n' "$_self"
+    exit 0
+fi
+
 read -r -d '' INPUT   # unterminated read returns non-zero; the data is in INPUT
 : "${INPUT:=}"
 
@@ -95,15 +112,41 @@ _branch() {
 [[ -n "$DIR" ]] && _branch "$DIR"
 BRANCH="$REPLY"
 
-# ── Presentation ─────────────────────────────────────────────────────────────
-# 256-color only. COLORTERM is frequently unset even where truecolor works, so
-# assuming it is not safe; the 256 palette renders correctly far more widely.
+# ── Theme ────────────────────────────────────────────────────────────────────
+# Change THEME below, or set CES_THEME in your environment to override it.
+# Adding one means adding a case branch: set the glyph, three text colours, and
+# three pressure colours. Nothing else in the script needs to know about it.
+#
+# 256-colour codes only. COLORTERM is frequently unset even where truecolor
+# works, so assuming truecolor is not safe; the 256 palette renders far wider.
+
+THEME="${CES_THEME:-ghost}"
+
+# Dim carries the model name, so it has to stay legible on a dark background —
+# the deep end of each hue ramp (22, 24, 94) is too dark to read and is avoided.
+# Swap GLYPH for anything your font renders: ᗝ ◆ ▲ ▮ ❄ ✦ ◈ ☾ ❉ ⬢ ·
+
+case "$THEME" in
+    ghost)    # dark violet, faintly haunted
+        GLYPH="ᗝ"; CA=141; CD=103; CG=177; P1=97;  P2=141; P3=205 ;;
+    ember)    # warm, embers banking down
+        GLYPH="▲"; CA=208; CD=137; CG=180; P1=130; P2=179; P3=203 ;;
+    matrix)   # terminal green
+        GLYPH="▮"; CA=46;  CD=71;  CG=84;  P1=65;  P2=112; P3=226 ;;
+    ice)      # cold blues
+        GLYPH="❄"; CA=81;  CD=109; CG=117; P1=66;  P2=74;  P3=147 ;;
+    mono)     # no hue at all, only weight
+        GLYPH="·"; CA=252; CD=243; CG=248; P1=243; P2=248; P3=255 ;;
+    *)        # the original
+        GLYPH="◆"; CA=110; CD=244; CG=108; P1=109; P2=179; P3=174 ;;
+esac
+
 if [[ -n "${NO_COLOR:-}" ]]; then
     A="" D="" G="" C="" R=""
 else
-    A=$'\033[38;5;110m'   # accent — the CES marker
-    D=$'\033[38;5;244m'   # dim — separators and secondary text
-    G=$'\033[38;5;108m'   # branch
+    A=$'\033[38;5;'"${CA}"'m'   # accent — the marker
+    D=$'\033[38;5;'"${CD}"'m'   # dim — separators and secondary text
+    G=$'\033[38;5;'"${CG}"'m'   # branch
     R=$'\033[0m'
 fi
 
@@ -127,11 +170,12 @@ if [[ -n "$PCTN" ]]; then
         *) BAR="███▇▇" ;;
     esac
 
-    # Bar colour tracks pressure, so the line reads at a glance.
+    # Bar colour tracks pressure, so the line reads at a glance. Every theme
+    # escalates, whatever its hue — the signal must survive the palette.
     if [[ -z "${NO_COLOR:-}" ]]; then
-        if   (( PCTN >= 80 )); then C=$'\033[38;5;174m'
-        elif (( PCTN >= 60 )); then C=$'\033[38;5;179m'
-        else                        C=$'\033[38;5;109m'
+        if   (( PCTN >= 80 )); then C=$'\033[38;5;'"${P3}"'m'
+        elif (( PCTN >= 60 )); then C=$'\033[38;5;'"${P2}"'m'
+        else                        C=$'\033[38;5;'"${P1}"'m'
         fi
     fi
 fi
@@ -145,7 +189,7 @@ if [[ "$SHORT" == */*/* ]]; then
 fi
 
 SEP="${D} · ${R}"
-OUT="${A}◆ ces${R}"
+OUT="${A}${GLYPH} ces${R}"
 [[ -n "$MODEL"  ]] && OUT+="${SEP}${D}${MODEL}${R}"
 [[ -n "$BRANCH" ]] && OUT+="${SEP}${G}${BRANCH}${R}"
 [[ -n "$PCTN"   ]] && OUT+="${SEP}${C}${BAR}${R}${D} ${PCTN}%${R}"

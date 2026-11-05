@@ -187,7 +187,29 @@ Every segment degrades independently: a missing field drops its segment rather t
 the line, and the script exits 0 on any input, including malformed JSON. `NO_COLOR` is honoured.
 
 If you already have a `statusLine` configured, `setup.sh` leaves it alone and tells you how to
-switch. To customize, edit `~/.claude/statusline/ces-statusline.sh`.
+switch.
+
+### Themes
+
+```bash
+bash ~/.claude/statusline/ces-statusline.sh --themes   # preview them all
+```
+
+| Theme | Look |
+|-------|------|
+| `ghost` | dark violet, escalating to hot magenta under pressure (default) |
+| `ember` | warm oranges and browns |
+| `matrix` | terminal green, yellow at the top end |
+| `ice` | cold blues |
+| `mono` | no hue — weight only |
+| `default` | the original blue-grey |
+
+Set one with `CES_THEME=matrix` in your shell, or change `THEME` near the top of the script.
+An unknown name falls back to `default` rather than breaking the line.
+
+Every theme escalates its bar colour with context pressure, whatever its hue — the signal has
+to survive the palette. Dim text stays legible on a dark background, which is why the deepest
+end of each ramp is avoided. Swap `GLYPH` for anything your font renders.
 
 ## Hook
 
@@ -217,6 +239,30 @@ bash scripts/test.sh             # full regression suite
 bash tests/test-hook.sh          # hook detection positives + negatives
 bash tests/test-frontmatter.sh   # agent and skill frontmatter validation
 ```
+
+### Running an eval
+
+```bash
+# A/B the system against a blind fixture
+FIXTURE=$PWD/docs/eval/fixture-app bash scripts/eval-security.sh 5
+
+# Add a third condition to test a change before deploying it
+FIXTURE=$PWD/docs/eval/fixture-app \
+  bash scripts/eval-security.sh 5 --variant global/CLAUDE.md
+
+# Score
+bash scripts/score-eval.sh  docs/eval/runs/<timestamp>   # report discipline
+bash scripts/score-chain.sh docs/eval/runs/<timestamp>   # compound-chain detection
+```
+
+Runs execute concurrently, bounded by `CONCURRENCY` (default 3). Each run is an independent
+process with its own HOME and its own private copy of the fixture, so the only shared resource
+is the API — which is why the bound exists rather than dispatching everything at once. Set
+`CONCURRENCY=1` for serial execution.
+
+Completion lines arrive out of order; the output file names carry the mapping. Recall against
+the answer keys is scored by hand, deliberately — judging whether a report names a mechanism or
+hand-waves at a category does not automate reliably.
 
 ## Docs
 

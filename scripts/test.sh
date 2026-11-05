@@ -504,6 +504,33 @@ else
         pass "no command substitution (no forks)"
     fi
 
+    # Every named theme must render and exit 0, and an unknown one must fall
+    # back rather than producing a broken line or an error.
+    theme_ok=1
+    for th in ghost ember matrix ice mono default __nonexistent__; do
+        t_out=$(echo '{"model":{"display_name":"M"},"context_window":{"used_percentage":50}}' \
+                | CES_THEME="$th" bash "$SL" 2>/dev/null) || true
+        t_err=$(echo '{"model":{"display_name":"M"},"context_window":{"used_percentage":50}}' \
+                | CES_THEME="$th" bash "$SL" 2>&1 >/dev/null) || true
+        if [[ -z "$t_out" || "$t_out" != *"ces"* ]]; then
+            fail "statusline/theme" "theme '${th}' produced no usable line"
+            theme_ok=0
+        fi
+        if [[ -n "$t_err" ]]; then
+            fail "statusline/theme" "theme '${th}' wrote to stderr: ${t_err:0:50}"
+            theme_ok=0
+        fi
+    done
+    [[ $theme_ok -eq 1 ]] && pass "all themes render; unknown theme falls back"
+
+    # --themes must not read stdin: it is run interactively with a terminal
+    # attached, where a blocking read would hang.
+    if timeout 5 bash "$SL" --themes </dev/null >/dev/null 2>&1; then
+        pass "--themes exits without blocking on stdin"
+    else
+        fail "statusline/themes-flag" "--themes hung or exited non-zero"
+    fi
+
     # The deployed config must not carry refreshInterval, which would add timed
     # runs for data that only changes between turns.
     if python3 -c "
