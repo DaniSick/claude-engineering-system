@@ -226,8 +226,8 @@ tiers, and the model running the session picks one:
 | Tier | Skeleton | Holes | Pupil (working) | Set by |
 |------|----------|-------|------------------|--------|
 | 0 | theme palette | black | red | anything unmatched |
-| 1 | flat red | black | yellow | `CES_HEAVY_MODELS` — default `opus` |
-| 2 | flat black | grey | yellow | `CES_APEX_MODELS` — default `fable` |
+| 1 | flat red | black | amber | `CES_HEAVY_MODELS` — default `opus` |
+| 2 | flat black | grey | cyan | `CES_APEX_MODELS` — default `fable` |
 
 ```
    ▄▄▄▄▄▄▄▄▄         █▄           ▄█         █▄           ▄█
@@ -246,10 +246,12 @@ rather than true white or the skeleton's own black: white read as too harsh agai
 and black would vanish into it. Tier 1's holes stay true black — red against black needs no
 grey step to separate.
 
-Both repainted tiers also move the working-state pupil to yellow: red stops reading as a glow
-once the skeleton itself is red or black, where yellow still stands out against both. Tier 0
-is the only one that keeps the theme's palette and the red pupil. Only the banner repaints —
-the info line keeps the theme's text colours and stays legible at every tier.
+Both repainted tiers also move the working-state pupil off red, which stops reading as a glow
+once the skeleton itself is red or black — each gets its own colour instead of sharing one:
+amber (`226`) at tier 1, cyan (`51`) at tier 2, picked to clear both that tier's skeleton and
+its holes rather than reuse a tone already in the palette there. Tier 0 is the only one that
+keeps the theme's palette and the red pupil. Only the banner repaints — the info line keeps
+the theme's text colours and stays legible at every tier.
 
 Both lists are **family substrings**, matched case-insensitively against the model's display
 name:

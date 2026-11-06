@@ -246,8 +246,8 @@ if [[ "${1:-}" == "--test" ]]; then
     _was_working=0; [[ -f "$_WORKFLAG" ]] && _was_working=1
     touch "$_WORKFLAG"
     _check_row_tone pupil-sonnet-red  "$_SONNET" 5 196
-    _check_row_tone pupil-demon-yellow "$_OPUS"  6 226
-    _check_row_tone pupil-void-yellow  "$_FABLE" 6 226
+    _check_row_tone pupil-demon-amber "$_OPUS"  6 226
+    _check_row_tone pupil-void-cyan   "$_FABLE" 6 51
     (( _was_working )) || rm -f "$_WORKFLAG"
 
     printf '\n%d passed  %d failed\n' "$PASS" "$FAIL"
@@ -431,16 +431,16 @@ else
     V=$'\033[38;5;'"${VC}"'m'
     # Pupil: glows while ~/.ces-working exists — the file is set by a
     # PreToolUse hook and cleared by Stop, so it stays lit during tool-use
-    # phases and goes dark when Claude finishes. Colour depends on tier: red
-    # (196) only at tier 0, yellow (226) from tier 1 up — once the skeleton
-    # itself has gone flat red or flat black, a red pupil reads as just
-    # another same-coloured cell instead of a glow, where yellow still stands
-    # out against both.
+    # phases and goes dark when Claude finishes. One colour per tier, not a
+    # single cutover: red (196) reads as just another cell once the skeleton
+    # itself has gone flat red (tier 1) or flat black (tier 2), so each
+    # repainted tier gets its own glow — amber (226) at tier 1, cyan (51) at
+    # tier 2, chosen to clear both the black skeleton and the grey holes
+    # rather than reuse a tone already in the palette there.
     if [[ -f "${HOME}/.ces-working" ]]; then
-        if (( TIER >= 1 )); then
-            PU=$'\033[38;5;226m'
-        else
-            PU=$'\033[38;5;196m'
+        if   (( TIER >= 2 )); then PU=$'\033[38;5;51m'
+        elif (( TIER == 1 )); then PU=$'\033[38;5;226m'
+        else                        PU=$'\033[38;5;196m'
         fi
     else
         PU="$V"

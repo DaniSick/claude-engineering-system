@@ -352,8 +352,8 @@ PASS  row:demon-mass row 3 is colour 196
 PASS  row:demon-holes row 5 is colour 16
 PASS  tone:demon-bone colour 230 absent
 PASS  row:pupil-sonnet-red row 5 is colour 196
-PASS  row:pupil-demon-yellow row 6 is colour 226
-PASS  row:pupil-void-yellow row 6 is colour 226
+PASS  row:pupil-demon-amber row 6 is colour 226
+PASS  row:pupil-void-cyan row 6 is colour 51
 
 32 passed  0 failed
 ```
@@ -400,8 +400,8 @@ First column should be 15 for the widest rows.
 | Tier | Skeleton | Holes | Pupil (working) | Set by |
 |------|----------|-------|------------------|--------|
 | 0 | theme palette | black | red | anything unmatched |
-| 1 | flat red | black | yellow | `CES_HEAVY_MODELS` (default `opus`) |
-| 2 | flat black | grey | yellow | `CES_APEX_MODELS` (default `fable`) |
+| 1 | flat red | black | amber | `CES_HEAVY_MODELS` (default `opus`) |
+| 2 | flat black | grey | cyan | `CES_APEX_MODELS` (default `fable`) |
 
 Matching is substring and case-insensitive against `model.display_name`, so it survives version
 bumps without an edit. Apex is tested first, so a model in both lists resolves to tier 2.
@@ -452,13 +452,15 @@ for m in "Sonnet 4.6" "Opus 5" "Fable 5.1"; do
 done
 rm -f ~/.ces-working
 ```
-`Sonnet 4.6` must show `<196>` (red) at the pupil cells; `Opus 5` and `Fable 5.1` must both
-show `<226>` (yellow).
+`Sonnet 4.6` must show `<196>` (red) at the pupil cells, `Opus 5` must show `<226>` (amber),
+and `Fable 5.1` must show `<51>` (cyan) — three distinct tones, not one cutover colour shared
+by tiers 1 and 2.
 
 **Red flags**: an unlisted or retired model producing anything other than the plain skull. A
 blank status line for any model name. A repainted banner (tier 1 or 2) whose info line also
 changed colour — text colours must not follow the tier. A red pupil surviving at tier 1 or 2,
-or a yellow one at tier 0. A horn row whose visible width is not 15 (`full`) or 13 (`small`) —
+or tier 1 and tier 2 sharing a pupil colour instead of each having their own. A horn row whose
+visible width is not 15 (`full`) or 13 (`small`) —
 S3 catches this, but only if the tier cases stay in the test list when the art changes.
 
 **Maintenance note**: adding a model family is one word in `CES_HEAVY_MODELS` or
