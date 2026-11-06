@@ -218,6 +218,40 @@ Every theme escalates its bar colour with context pressure, whatever its hue —
 to survive the palette. Dim text stays legible on a dark background, which is why the deepest
 end of each ramp is avoided. Swap `GLYPH` for anything your font renders.
 
+### Banner
+
+`CES_BANNER=full` or `CES_BANNER=small` draws pixel art above the info line. The art has two
+variants, and the model running the session picks between them — a plain skull for everyday
+models, horns when something heavy is driving:
+
+```
+   ▄▄▄▄▄▄▄▄▄         █▄           ▄█
+ █████████████       ▀██▄▄▄▄▄▄▄▄▄██▀
+███████████████       █████████████
+███████████████      ███████████████
+```
+
+Which models count as heavy is a list of **family substrings**, matched case-insensitively
+against the model's display name:
+
+```bash
+export CES_HEAVY_MODELS="opus"        # the default
+export CES_HEAVY_MODELS="opus fable"  # add a family
+```
+
+Substrings rather than exact model ids is the deliberate part: `opus` keeps matching across
+`Opus 4.1`, `Opus 5`, `claude-opus-5` and whatever version comes next, so a release does not
+require an edit here. A model that matches nothing — one you never listed, one that has been
+retired, or a payload with no model field at all — renders the plain skull. The check never
+fails closed and never blanks the line.
+
+Only the crown row differs between the two variants; everything from the brow down is shared,
+so the skull is defined in one place and the horns cannot drift out of alignment with it. Both
+hold the same fixed grid — 15 columns for `full`, 13 for `small` — which
+`ces-statusline.sh --test` enforces on every variant.
+
+Hide the banner with `/banner`, or `touch ~/.ces-no-banner`.
+
 ## Hook
 
 `secret-scan.py` runs before `git commit` and warns if the staged diff contains credential-like patterns:

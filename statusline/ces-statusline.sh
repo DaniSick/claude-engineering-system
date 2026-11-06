@@ -26,6 +26,16 @@
 # rather than keeping a copy that would drift out of sync.
 CES_THEME_NAMES="ghost ember matrix ice mono default"
 
+# Which models wear the horns. Space-separated substrings, matched
+# case-insensitively against the model's display name. These are family names,
+# not exact ids, so "opus" keeps matching across "Opus 4.1", "Opus 5" and
+# whatever follows without an edit here. Anything that matches nothing — an
+# unfamiliar model, a retired one, or no model field at all — renders the plain
+# skull, so a rename or a discontinuation degrades quietly instead of breaking
+# the line. Override without touching this file:
+#   export CES_HEAVY_MODELS="opus fable"
+CES_HEAVY_MODELS="${CES_HEAVY_MODELS:-opus}"
+
 if [[ "${1:-}" == "--theme-names" ]]; then
     printf '%s\n' $CES_THEME_NAMES
     exit 0
@@ -94,17 +104,64 @@ if [[ "${1:-}" == "--test" ]]; then
         done
         printf '%d' "$n"
     }
-    _check_banner() {
-        local mode="$1" exp="$2" max=0 w row
+    # One render, two measurements: REPLY is the widest visible row (the grid
+    # invariant) and ROWS is the line count including the info line (which
+    # variant was selected). `< <(...)` keeps the loop in this shell so ROWS
+    # survives it.
+    _render() {
+        local mode="$1" json="$2" row
+        ROWS=0; W=()
         while IFS= read -r row; do
-            w="$(_vislen "$row")"
-            (( w > max )) && max=$w
-        done < <(printf '{}' | NO_COLOR=1 CES_BANNER="$mode" bash "$_self")
-        (( max == exp )) && _ok "banner:${mode} max-width=${exp}" \
-                        || _fail "banner:${mode} expected max-width=${exp} got=${max}"
+            W[ROWS]="$(_vislen "$row")"
+            (( ROWS++ ))
+        done < <(printf '%s' "$json" | NO_COLOR=1 CES_BANNER="$mode" bash "$_self")
     }
-    _check_banner full  15
-    _check_banner small 13
+    # Widest banner row only. The last line is the info line, whose width
+    # tracks the model name and directory; it is not part of the art grid and
+    # measuring it against the grid is what made this check pass only for
+    # payloads with no model field.
+    _banner_width() {
+        local i max=0
+        for (( i=0; i<ROWS-1; i++ )); do (( W[i] > max )) && max=${W[i]}; done
+        REPLY="$max"
+    }
+    _check_banner() {
+        local label="$1" mode="$2" exp="$3" json="$4"
+        [[ -n "$json" ]] || json='{}'
+        _render "$mode" "$json"
+        _banner_width
+        (( REPLY == exp )) && _ok "banner:${label} max-width=${exp}" \
+                          || _fail "banner:${label} expected max-width=${exp} got=${REPLY}"
+    }
+    _check_rows() {
+        local label="$1" mode="$2" exp="$3" json="$4"
+        _render "$mode" "$json"
+        (( ROWS == exp )) && _ok "variant:${label} rows=${exp}" \
+                         || _fail "variant:${label} expected rows=${exp} got=${ROWS}"
+    }
+
+    _OPUS='{"model":{"display_name":"Opus 5"}}'
+    _LOWER='{"model":{"display_name":"claude-opus-5"}}'
+    _SONNET='{"model":{"display_name":"Sonnet 4.6"}}'
+    _RETIRED='{"model":{"display_name":"Nimbus 9"}}'
+    _NOMODEL='{"workspace":{"current_dir":"/tmp"}}'
+
+    # The horned variant has to hold the same grid as the plain one.
+    _check_banner full        full  15
+    _check_banner small       small 13
+    _check_banner demon-full  full  15 "$_OPUS"
+    _check_banner demon-small small 13 "$_OPUS"
+
+    # Variant selection. The horned crown is two rows where the plain one is
+    # one, so a full banner goes 10->11 rows; +1 for the info line either way.
+    _check_rows skull-full   full 11 '{}'
+    _check_rows demon-full   full 12 "$_OPUS"
+    _check_rows demon-lower  full 12 "$_LOWER"
+    # A model outside the list, one that no longer exists, and a payload with
+    # no model field at all must all fall back to the skull rather than fail.
+    _check_rows sonnet-full  full 11 "$_SONNET"
+    _check_rows retired-full full 11 "$_RETIRED"
+    _check_rows nomodel-full full 11 "$_NOMODEL"
 
     printf '\n%d passed  %d failed\n' "$PASS" "$FAIL"
     (( FAIL == 0 )); exit $?
@@ -151,6 +208,22 @@ _jobj "$INPUT" workspace  && { _jget "$REPLY" current_dir     && DIR="$REPLY"; }
 _jobj "$INPUT" context_window && { _jget "$REPLY" used_percentage && PCT="$REPLY"; }
 _jobj "$INPUT" output_style   && { _jget "$REPLY" name        && STYLE="$REPLY"; }
 [[ -z "$DIR" ]] && { _jget "$INPUT" cwd && DIR="$REPLY"; }
+
+# ── Model weight ─────────────────────────────────────────────────────────────
+# HEAVY=1 swaps the banner's smooth crown for horns. Matching is substring and
+# case-insensitive, against the display name only: it is the field the status
+# JSON is documented to carry, and a family substring survives the version
+# bumps and id reshuffles that an exact match would not. The pattern list is
+# CES_HEAVY_MODELS at the top of this file — adding a family is one word there,
+# and no other part of the script needs to know about it.
+HEAVY=0
+if [[ -n "$MODEL" ]]; then
+    shopt -s nocasematch
+    for _pat in $CES_HEAVY_MODELS; do
+        [[ "$MODEL" == *"$_pat"* ]] && { HEAVY=1; break; }
+    done
+    shopt -u nocasematch
+fi
 
 # ── Git branch, read from the filesystem rather than by running git ──────────
 # Walks up looking for .git. A directory holds HEAD directly; a worktree or
@@ -334,7 +407,21 @@ case "${CES_BANNER:-off}" in
         # Nose: inverted heart — two 1px nostril dots (row 7) converge into
         # a 3px merged opening (row 8).
         # No purple rows; tooth gaps use true black (V) for clean definition.
-        printf '%s\n' "${SL}   ▄▄▄▄▄▄▄▄▄${R}"
+        # The crown is the only row that differs between variants — everything
+        # below it is shared, so the skull stays defined in exactly one place
+        # and the horns cannot drift out of alignment with it. Horns are drawn
+        # in SD (the theme's shadow tone) so they read as a different material
+        # than the cranium without adding a colour to the palette.
+        # Horn rows hold the 15-column grid: 1+1+11+1+1 and 1+2+9+2+1. The
+        # 9-cell dome top is the plain crown unchanged, so the horns are added
+        # beside the skull rather than by reshaping it — the two variants share
+        # the same silhouette from the brow down.
+        if (( HEAVY )); then
+            printf '%s\n' "${SD}█▄           ▄█${R}"
+            printf '%s\n' "${SD}▀██${SL}▄▄▄▄▄▄▄▄▄${SD}██▀${R}"
+        else
+            printf '%s\n' "${SL}   ▄▄▄▄▄▄▄▄▄${R}"
+        fi
         printf '%s\n' "${SL} █████████████${R}"
         printf '%s\n' "${SM}███████████████${R}"
         printf '%s\n' "${SM}███████████████${R}"
@@ -349,7 +436,13 @@ case "${CES_BANNER:-off}" in
         # 13px wide. Eyes: SM:2+V:3+SM:3+V:3+SM:2=13.
         # Nose: two 1px dots (SM:4+V:1+SM:3+V:1+SM:4=13).
         # Tooth gaps use V (black), no purple.
-        printf '%s\n' "${SL} ███████████${R}"
+        # Same split as full: crown swaps, body is shared. 1+1+9+1+1 and 1+11+1.
+        if (( HEAVY )); then
+            printf '%s\n' "${SD}█▄         ▄█${R}"
+            printf '%s\n' "${SD}▀${SL}███████████${SD}▀${R}"
+        else
+            printf '%s\n' "${SL} ███████████${R}"
+        fi
         printf '%s\n' "${SM}██${V}█${PU}█${V}█${SM}███${V}█${PU}█${V}█${SM}██${R}"
         printf '%s\n' "${SM}████${V}█${SM}███${V}█${SM}████${R}"
         printf '%s\n' "${SM}█${V}█${SM}██${V}█${SM}███${V}█${SM}██${V}█${SM}█${R}"

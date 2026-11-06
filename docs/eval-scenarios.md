@@ -329,8 +329,16 @@ PASS  _jobj:nested
 PASS  _jobj:missing
 PASS  banner:full max-width=15
 PASS  banner:small max-width=13
+PASS  banner:demon-full max-width=15
+PASS  banner:demon-small max-width=13
+PASS  variant:skull-full rows=11
+PASS  variant:demon-full rows=12
+PASS  variant:demon-lower rows=12
+PASS  variant:sonnet-full rows=11
+PASS  variant:retired-full rows=11
+PASS  variant:nomodel-full rows=11
 
-7 passed  0 failed
+15 passed  0 failed
 ```
 
 **Red flags**: Any FAIL line. Non-zero exit code.
@@ -365,3 +373,33 @@ First column should be 15 for the widest rows.
 4. `rm ~/.ces-working` → next redraw shows black sockets.
 
 **Automated check**: not scriptable (requires a live session).
+
+---
+
+### S6 — Model-driven banner variant
+
+**Property**: the banner renders horns when the session model matches `CES_HEAVY_MODELS`
+(default `opus`), and the plain skull otherwise. Matching is substring and case-insensitive
+against `model.display_name`, so it survives version bumps without an edit.
+
+**Verification**: covered by S3's `variant:*` checks, which assert row counts for a heavy
+model, a lowercase model id, a non-heavy model, a model outside the list, and a payload with
+no model field at all.
+
+**Manual check**:
+```bash
+for m in "Opus 5" "claude-opus-5" "Sonnet 4.6" "Nimbus 9"; do
+  printf '  %-16s ' "$m"
+  printf '{"model":{"display_name":"%s"}}' "$m" \
+    | NO_COLOR=1 CES_BANNER=full bash ~/.claude/statusline/ces-statusline.sh | head -1
+done
+```
+First two rows start with `█▄` (horns); the last two with spaces (plain crown).
+
+**Red flags**: an unlisted or retired model producing anything other than the plain skull. A
+blank status line for any model name. A horn row whose visible width is not 15 (`full`) or 13
+(`small`) — S3 catches this, but only if the variant cases stay in the test list when the art
+changes.
+
+**Maintenance note**: adding a model family is one word in `CES_HEAVY_MODELS` at the top of
+`statusline/ces-statusline.sh`. Nothing else in the script branches on model identity.
