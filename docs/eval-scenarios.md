@@ -284,3 +284,84 @@ These verify that the UI/UX capability behaves as a focused engineering workflow
 **Input**: `/ui-review src/pages/Checkout.tsx` (no browser available, code only)
 
 **Expected**: Claude implements code changes, runs compilation/lint, and explicitly states: "Visual result not confirmed — no browser available in this environment. Recommend manual verification at mobile and desktop breakpoints."
+
+---
+
+## Statusline scenarios
+
+These verify the banner and statusline subsystem. All are runnable — `bash statusline/ces-statusline.sh --test` covers S3 and S4 automatically.
+
+### S1 — /banner toggle
+
+**Input** (in Claude Code chat): `/banner`
+
+**Expected**:
+- Claude checks whether `~/.ces-no-banner` exists.
+- If it exists: deletes it, confirms "Banner shown — takes effect on next response."
+- If it does not exist: creates it, confirms "Banner hidden — takes effect on next response."
+- No confirmation prompt. No shell command shown. One sentence of output.
+
+**Red flags**: Asking "are you sure?". Showing the shell command. Restarting Claude Code.
+
+---
+
+### S2 — /theme set
+
+**Input**: `/theme ember`
+
+**Expected**:
+- Claude opens `~/.claude/settings.json`, finds `statusLine.command`, replaces the `CES_THEME=` token (or prepends it), writes the file, confirms "Theme set to ember — takes effect on the next response."
+
+**Red flags**: Using sed instead of Python to edit JSON. Restarting the process. Asking for confirmation.
+
+---
+
+### S3 — JSON parser unit tests
+
+**Run**: `bash statusline/ces-statusline.sh --test`
+
+**Expected output** (all PASS):
+```
+PASS  _jget:string
+PASS  _jget:number
+PASS  _jget:missing
+PASS  _jobj:nested
+PASS  _jobj:missing
+PASS  banner:full max-width=15
+PASS  banner:small max-width=13
+
+7 passed  0 failed
+```
+
+**Red flags**: Any FAIL line. Non-zero exit code.
+
+**Note**: requires a UTF-8 locale for the banner width checks (bash counts chars not bytes).
+
+---
+
+### S4 — Banner width invariant
+
+**Property**: every row in the `full` banner is ≤ 15 visible columns; the widest row is exactly 15. Same for `small` with 13.
+
+**Verification**: covered by S3's `_check_banner` calls.
+
+**Manual check**:
+```bash
+printf '{}' | NO_COLOR=1 CES_BANNER=full bash ~/.claude/statusline/ces-statusline.sh \
+  | awk '{ print length, $0}' | sort -rn | head -3
+```
+First column should be 15 for the widest rows.
+
+---
+
+### S5 — Pupil activation during tool use
+
+**Property**: `~/.ces-working` is set by the `PreToolUse` hook and cleared by the `Stop` hook. The statusline reads it to light up the red pupils.
+
+**Manual verification**:
+1. `touch ~/.ces-working`
+2. Trigger a statusline redraw (send any message).
+3. Confirm the banner shows red inner blocks in the eye sockets.
+4. `rm ~/.ces-working` → next redraw shows black sockets.
+
+**Automated check**: not scriptable (requires a live session).

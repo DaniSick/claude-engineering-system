@@ -48,6 +48,68 @@ if [[ "${1:-}" == "--themes" ]]; then
     exit 0
 fi
 
+if [[ "${1:-}" == "--test" ]]; then
+    _self="${BASH_SOURCE[0]}"
+    PASS=0 FAIL=0
+    _ok()   { printf 'PASS  %s\n' "$1"; PASS=$(( PASS + 1 )); }
+    _fail() { printf 'FAIL  %s\n' "$1"; FAIL=$(( FAIL + 1 )); }
+
+    # Inline copies of the parsers — originals are defined later in the script.
+    _jget() {
+        local s="$1" k="$2" v
+        REPLY=""
+        [[ "$s" == *"\"$k\":"* ]] || return 1
+        v="${s#*\"$k\":}"; v="${v# }"
+        if [[ "$v" == '"'* ]]; then v="${v:1}"; v="${v%%\"*}"
+        else v="${v%%,*}"; v="${v%%\}*}"; v="${v%% *}"; fi
+        [[ -n "$v" ]] || return 1; REPLY="$v"
+    }
+    _jobj() {
+        local s="$1" k="$2"
+        REPLY=""
+        [[ "$s" == *"\"$k\":{"* ]] || return 1
+        REPLY="${s#*\"$k\":\{}"
+    }
+
+    _jget '{"display_name":"Opus 5"}' display_name \
+        && [[ "$REPLY" == "Opus 5" ]]  && _ok "_jget:string"  || _fail "_jget:string"
+    _jget '{"used_percentage":42}' used_percentage \
+        && [[ "$REPLY" == "42" ]]       && _ok "_jget:number"  || _fail "_jget:number"
+    _jget '{"a":"b"}' missing 2>/dev/null \
+        && _fail "_jget:missing (should fail)" || _ok "_jget:missing"
+    _jobj '{"model":{"display_name":"X"}}' model \
+        && [[ "$REPLY" == *'"display_name"'* ]] && _ok "_jobj:nested" || _fail "_jobj:nested"
+    _jobj '{"a":{"b":"c"}}' missing 2>/dev/null \
+        && _fail "_jobj:missing (should fail)"  || _ok "_jobj:missing"
+
+    # Banner widths: strip ANSI escape codes, count chars per row, check the max.
+    # Requires a UTF-8 locale so bash's ${#s} counts chars, not bytes.
+    _vislen() {
+        local s="$1" i c esc=0 n=0
+        for (( i=0; i<${#s}; i++ )); do
+            c="${s:$i:1}"
+            if (( esc )); then [[ "$c" == "m" ]] && esc=0; continue; fi
+            [[ "$c" == $'\033' ]] && { esc=1; continue; }
+            (( n++ ))
+        done
+        printf '%d' "$n"
+    }
+    _check_banner() {
+        local mode="$1" exp="$2" max=0 w row
+        while IFS= read -r row; do
+            w="$(_vislen "$row")"
+            (( w > max )) && max=$w
+        done < <(printf '{}' | NO_COLOR=1 CES_BANNER="$mode" bash "$_self")
+        (( max == exp )) && _ok "banner:${mode} max-width=${exp}" \
+                        || _fail "banner:${mode} expected max-width=${exp} got=${max}"
+    }
+    _check_banner full  15
+    _check_banner small 13
+
+    printf '\n%d passed  %d failed\n' "$PASS" "$FAIL"
+    (( FAIL == 0 )); exit $?
+fi
+
 read -r -d '' INPUT   # unterminated read returns non-zero; the data is in INPUT
 : "${INPUT:=}"
 
@@ -82,14 +144,13 @@ _jobj() {
     REPLY="${s#*\"$k\":\{}"
 }
 
-MODEL="" DIR="" PCT="" BRANCH="" STYLE="" STREAMING=""
+MODEL="" DIR="" PCT="" BRANCH="" STYLE=""
 
 _jobj "$INPUT" model      && { _jget "$REPLY" display_name    && MODEL="$REPLY"; }
 _jobj "$INPUT" workspace  && { _jget "$REPLY" current_dir     && DIR="$REPLY"; }
 _jobj "$INPUT" context_window && { _jget "$REPLY" used_percentage && PCT="$REPLY"; }
 _jobj "$INPUT" output_style   && { _jget "$REPLY" name        && STYLE="$REPLY"; }
 [[ -z "$DIR" ]] && { _jget "$INPUT" cwd && DIR="$REPLY"; }
-_jget "$INPUT" is_streaming && STREAMING="$REPLY"
 
 # ── Git branch, read from the filesystem rather than by running git ──────────
 # Walks up looking for .git. A directory holds HEAD directly; a worktree or
@@ -180,9 +241,10 @@ else
     # Sockets and nasal cavity: true black, so they read as holes punched
     # through the bone rather than as dark-coloured fill.
     V=$'\033[38;5;16m'
-    # Pupil: glows red (196) while is_streaming=true in the JSON; falls back
-    # to socket black so idle eyes stay dark. No token cost — bash only.
-    if [[ "$STREAMING" == "true" ]]; then
+    # Pupil: glows red (196) while ~/.ces-working exists — the file is set by
+    # a PreToolUse hook and cleared by Stop, so it stays lit during tool-use
+    # phases and goes dark when Claude finishes.
+    if [[ -f "${HOME}/.ces-working" ]]; then
         PU=$'\033[38;5;196m'
     else
         PU="$V"
@@ -252,17 +314,10 @@ fi
 #
 # Either check skips the printf block entirely; the info line still renders.
 
-# Both variants are laid out on a fixed grid — 19 columns for full, 13 for
+# Both variants are laid out on a fixed grid — 15 columns for full, 13 for
 # small — so the skull stays symmetric. Colour spans are inserted inside the
 # row without changing its visible width; miscounting one row is what makes
 # this kind of art look crooked.
-
-# Laid out on a fixed grid — 21 columns for full, 15 for small — with an odd
-# width so there is a true centre column. Four tones give the skull volume
-# without adding any theme configuration: G is rim light along the cranium,
-# A is bone, D is the socket void, E is the pupil burning inside it. Colour
-# spans never change a row's visible width, which is what makes hand-counted
-# art come out crooked.
 
 if [[ -z "${CES_BANNER_HIDDEN:-}" && ! -f "${HOME}/.ces-no-banner" ]]; then
 case "${CES_BANNER:-off}" in
