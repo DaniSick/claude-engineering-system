@@ -220,35 +220,51 @@ end of each ramp is avoided. Swap `GLYPH` for anything your font renders.
 
 ### Banner
 
-`CES_BANNER=full` or `CES_BANNER=small` draws pixel art above the info line. The art has two
-variants, and the model running the session picks between them — a plain skull for everyday
-models, horns when something heavy is driving:
+`CES_BANNER=full` or `CES_BANNER=small` draws pixel art above the info line. The art has three
+tiers, and the model running the session picks one:
+
+| Tier | Look | Set by |
+|------|------|--------|
+| 0 | plain skull | anything unmatched |
+| 1 | horns | `CES_HEAVY_MODELS` — default `opus` |
+| 2 | horns, palette inverted | `CES_APEX_MODELS` — default `fable` |
 
 ```
    ▄▄▄▄▄▄▄▄▄         █▄           ▄█
  █████████████       ▀██▄▄▄▄▄▄▄▄▄██▀
 ███████████████       █████████████
 ███████████████      ███████████████
+     tier 0              tier 1
 ```
 
-Which models count as heavy is a list of **family substrings**, matched case-insensitively
-against the model's display name:
+Tier 2 keeps the horned silhouette and inverts the palette. The three bone tones collapse to
+near-black — holding their relative order so dome, mass and horns still separate — and the
+sockets, nasal cavity and tooth gaps take the theme's lit tone instead of true black. The skull
+stops being a lit object with dark holes and becomes a silhouette with its sockets burning
+through; the pupils still flare red during tool use. Only the banner inverts, so the info line
+keeps the theme's text colours and stays legible at every tier.
+
+Both lists are **family substrings**, matched case-insensitively against the model's display
+name:
 
 ```bash
-export CES_HEAVY_MODELS="opus"        # the default
-export CES_HEAVY_MODELS="opus fable"  # add a family
+export CES_HEAVY_MODELS="opus"          # the defaults
+export CES_APEX_MODELS="fable"
+
+export CES_APEX_MODELS="fable titan"    # add a family: one word
 ```
 
 Substrings rather than exact model ids is the deliberate part: `opus` keeps matching across
 `Opus 4.1`, `Opus 5`, `claude-opus-5` and whatever version comes next, so a release does not
-require an edit here. A model that matches nothing — one you never listed, one that has been
-retired, or a payload with no model field at all — renders the plain skull. The check never
-fails closed and never blanks the line.
+require an edit here. A model matching neither list — one you never listed, one that has been
+retired, or a payload with no model field at all — falls to tier 0. The check never fails
+closed and never blanks the line. Apex is tested first, so a model in both lists gets the
+heavier look.
 
-Only the crown row differs between the two variants; everything from the brow down is shared,
-so the skull is defined in one place and the horns cannot drift out of alignment with it. Both
-hold the same fixed grid — 15 columns for `full`, 13 for `small` — which
-`ces-statusline.sh --test` enforces on every variant.
+Only the crown row branches on tier, and the palette is resolved in one place before any escape
+code is built, so the skull stays defined once and the horns cannot drift out of alignment with
+it. Both sizes hold a fixed grid — 15 columns for `full`, 13 for `small` — which
+`ces-statusline.sh --test` enforces on every tier.
 
 Hide the banner with `/banner`, or `touch ~/.ces-no-banner`.
 

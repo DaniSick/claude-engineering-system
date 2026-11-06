@@ -4,9 +4,10 @@ description: Toggle the CES statusline banner on or off. Usage: /banner — flip
 
 # Banner Toggle
 
-Toggles the pixel-art skull banner that appears above the CES statusline. The banner renders a
-horned variant when a heavy model is in use (`CES_HEAVY_MODELS`, default `opus`); this command
-toggles the whole banner, not the variant.
+Toggles the pixel-art skull banner that appears above the CES statusline. The banner has three
+tiers picked by the session model — plain skull, horns (`CES_HEAVY_MODELS`, default `opus`),
+and horns with an inverted palette (`CES_APEX_MODELS`, default `fable`). This command toggles
+the whole banner, not the tier.
 
 ## Behavior
 

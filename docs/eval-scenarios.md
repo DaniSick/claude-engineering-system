@@ -331,14 +331,20 @@ PASS  banner:full max-width=15
 PASS  banner:small max-width=13
 PASS  banner:demon-full max-width=15
 PASS  banner:demon-small max-width=13
+PASS  banner:void-full max-width=15
+PASS  banner:void-small max-width=13
 PASS  variant:skull-full rows=11
 PASS  variant:demon-full rows=12
 PASS  variant:demon-lower rows=12
 PASS  variant:sonnet-full rows=11
 PASS  variant:retired-full rows=11
 PASS  variant:nomodel-full rows=11
+PASS  variant:void-full rows=12
+PASS  tone:void-body colour 233 present
+PASS  tone:void-bone colour 230 absent
+PASS  tone:demon-bone colour 230 present
 
-15 passed  0 failed
+21 passed  0 failed
 ```
 
 **Red flags**: Any FAIL line. Non-zero exit code.
@@ -376,30 +382,44 @@ First column should be 15 for the widest rows.
 
 ---
 
-### S6 — Model-driven banner variant
+### S6 — Model-driven banner tier
 
-**Property**: the banner renders horns when the session model matches `CES_HEAVY_MODELS`
-(default `opus`), and the plain skull otherwise. Matching is substring and case-insensitive
-against `model.display_name`, so it survives version bumps without an edit.
+**Property**: the banner has three tiers, picked by the session model — plain skull (tier 0),
+horns for `CES_HEAVY_MODELS` (tier 1, default `opus`), horns plus an inverted palette for
+`CES_APEX_MODELS` (tier 2, default `fable`). Matching is substring and case-insensitive
+against `model.display_name`, so it survives version bumps without an edit. Apex is tested
+first, so a model in both lists resolves to tier 2.
 
-**Verification**: covered by S3's `variant:*` checks, which assert row counts for a heavy
-model, a lowercase model id, a non-heavy model, a model outside the list, and a payload with
-no model field at all.
+**Verification**: covered by S3. The `variant:*` checks assert row counts for a heavy model, a
+lowercase model id, an apex model, a non-heavy model, a model outside both lists, and a payload
+with no model field at all. The `tone:*` checks assert the palette, which row counts cannot see
+— tiers 1 and 2 share a silhouette and differ only in colour.
 
-**Manual check**:
+**Manual check — shape**:
 ```bash
-for m in "Opus 5" "claude-opus-5" "Sonnet 4.6" "Nimbus 9"; do
+for m in "Opus 5" "claude-opus-5" "Fable 5.1" "Sonnet 4.6" "Nimbus 9"; do
   printf '  %-16s ' "$m"
   printf '{"model":{"display_name":"%s"}}' "$m" \
     | NO_COLOR=1 CES_BANNER=full bash ~/.claude/statusline/ces-statusline.sh | head -1
 done
 ```
-First two rows start with `█▄` (horns); the last two with spaces (plain crown).
+The first three rows start with `█▄` (horns); the last two with spaces (plain crown).
+
+**Manual check — inversion**:
+```bash
+printf '{"model":{"display_name":"Fable 5.1"}}' \
+  | CES_THEME=ghost CES_BANNER=full bash ~/.claude/statusline/ces-statusline.sh \
+  | cat -v | sed 's/\^\[\[38;5;\([0-9]*\)m/<\1>/g' | head -8
+```
+Expect `<16>` horns, `<233>`/`<236>` bone and `<255>` sockets. The same command with
+`Opus 5` must show `<54>` horns, `<230>` bone and `<16>` sockets — the inverse relationship.
 
 **Red flags**: an unlisted or retired model producing anything other than the plain skull. A
-blank status line for any model name. A horn row whose visible width is not 15 (`full`) or 13
-(`small`) — S3 catches this, but only if the variant cases stay in the test list when the art
+blank status line for any model name. An inverted banner whose info line also inverted — text
+colours must not follow the tier. A horn row whose visible width is not 15 (`full`) or 13
+(`small`) — S3 catches this, but only if the tier cases stay in the test list when the art
 changes.
 
-**Maintenance note**: adding a model family is one word in `CES_HEAVY_MODELS` at the top of
-`statusline/ces-statusline.sh`. Nothing else in the script branches on model identity.
+**Maintenance note**: adding a model family is one word in `CES_HEAVY_MODELS` or
+`CES_APEX_MODELS` at the top of `statusline/ces-statusline.sh`. One matcher (`_model_in`)
+serves both lists, and nothing else in the script branches on model identity.

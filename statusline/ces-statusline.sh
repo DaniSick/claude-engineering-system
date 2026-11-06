@@ -26,15 +26,24 @@
 # rather than keeping a copy that would drift out of sync.
 CES_THEME_NAMES="ghost ember matrix ice mono default"
 
-# Which models wear the horns. Space-separated substrings, matched
-# case-insensitively against the model's display name. These are family names,
-# not exact ids, so "opus" keeps matching across "Opus 4.1", "Opus 5" and
-# whatever follows without an edit here. Anything that matches nothing — an
-# unfamiliar model, a retired one, or no model field at all — renders the plain
-# skull, so a rename or a discontinuation degrades quietly instead of breaking
-# the line. Override without touching this file:
-#   export CES_HEAVY_MODELS="opus fable"
+# The banner has three tiers, picked by the model driving the session:
+#
+#   0  plain skull          anything unmatched
+#   1  horns                CES_HEAVY_MODELS
+#   2  horns, inverted      CES_APEX_MODELS
+#
+# Both lists are space-separated substrings, matched case-insensitively against
+# the model's display name. These are family names, not exact ids, so "opus"
+# keeps matching across "Opus 4.1", "Opus 5", "claude-opus-5" and whatever
+# follows without an edit here. Anything that matches neither list — an
+# unfamiliar model, a retired one, or no model field at all — falls to tier 0,
+# so a rename or a discontinuation degrades quietly instead of breaking the
+# line. Apex is tested first, so a model in both lists gets the heavier look.
+#
+# Adding a family is one word in one of these. Override without touching this
+# file:  export CES_APEX_MODELS="fable titan"
 CES_HEAVY_MODELS="${CES_HEAVY_MODELS:-opus}"
+CES_APEX_MODELS="${CES_APEX_MODELS:-fable}"
 
 if [[ "${1:-}" == "--theme-names" ]]; then
     printf '%s\n' $CES_THEME_NAMES
@@ -140,17 +149,37 @@ if [[ "${1:-}" == "--test" ]]; then
                          || _fail "variant:${label} expected rows=${exp} got=${ROWS}"
     }
 
+    # Tier is a palette decision, not a shape one, so it cannot be read off the
+    # row count. Pin the theme — these assert on specific colour numbers, and
+    # CES_THEME would otherwise leak in from the caller's environment.
+    _check_tone() {
+        local label="$1" json="$2" want="$3" mode="${4:-has}" row found=0
+        while IFS= read -r row; do
+            [[ "$row" == *"38;5;${want}m"* ]] && found=1
+        done < <(printf '%s' "$json" | CES_THEME=ghost CES_BANNER=full bash "$_self")
+        if [[ "$mode" == lacks ]]; then
+            (( found )) && _fail "tone:${label} colour ${want} should be absent" \
+                        || _ok   "tone:${label} colour ${want} absent"
+        else
+            (( found )) && _ok   "tone:${label} colour ${want} present" \
+                        || _fail "tone:${label} colour ${want} missing"
+        fi
+    }
+
     _OPUS='{"model":{"display_name":"Opus 5"}}'
     _LOWER='{"model":{"display_name":"claude-opus-5"}}'
     _SONNET='{"model":{"display_name":"Sonnet 4.6"}}'
     _RETIRED='{"model":{"display_name":"Nimbus 9"}}'
     _NOMODEL='{"workspace":{"current_dir":"/tmp"}}'
+    _FABLE='{"model":{"display_name":"Fable 5.1"}}'
 
-    # The horned variant has to hold the same grid as the plain one.
+    # Every variant has to hold the same grid as the plain one.
     _check_banner full        full  15
     _check_banner small       small 13
     _check_banner demon-full  full  15 "$_OPUS"
     _check_banner demon-small small 13 "$_OPUS"
+    _check_banner void-full   full  15 "$_FABLE"
+    _check_banner void-small  small 13 "$_FABLE"
 
     # Variant selection. The horned crown is two rows where the plain one is
     # one, so a full banner goes 10->11 rows; +1 for the info line either way.
@@ -162,6 +191,14 @@ if [[ "${1:-}" == "--test" ]]; then
     _check_rows sonnet-full  full 11 "$_SONNET"
     _check_rows retired-full full 11 "$_RETIRED"
     _check_rows nomodel-full full 11 "$_NOMODEL"
+    # Apex wears the same horns as heavy — it differs by palette, not shape.
+    _check_rows void-full    full 12 "$_FABLE"
+
+    # Palette inversion. 233 is the inverted bone and exists only at tier 2;
+    # 230 is ghost's normal bone and must be gone once the skull inverts.
+    _check_tone void-body  "$_FABLE" 233
+    _check_tone void-bone  "$_FABLE" 230 lacks
+    _check_tone demon-bone "$_OPUS"  230
 
     printf '\n%d passed  %d failed\n' "$PASS" "$FAIL"
     (( FAIL == 0 )); exit $?
@@ -210,19 +247,26 @@ _jobj "$INPUT" output_style   && { _jget "$REPLY" name        && STYLE="$REPLY";
 [[ -z "$DIR" ]] && { _jget "$INPUT" cwd && DIR="$REPLY"; }
 
 # ── Model weight ─────────────────────────────────────────────────────────────
-# HEAVY=1 swaps the banner's smooth crown for horns. Matching is substring and
-# case-insensitive, against the display name only: it is the field the status
-# JSON is documented to carry, and a family substring survives the version
-# bumps and id reshuffles that an exact match would not. The pattern list is
-# CES_HEAVY_MODELS at the top of this file — adding a family is one word there,
-# and no other part of the script needs to know about it.
-HEAVY=0
-if [[ -n "$MODEL" ]]; then
+# TIER drives both the horns and the palette inversion. Matching is substring
+# and case-insensitive, against the display name only: it is the field the
+# status JSON carries, and a family substring survives the version bumps and id
+# reshuffles that an exact match would not. One matcher, two lists — see the
+# tier table at the top of this file.
+_model_in() {
+    local pat hit=1
     shopt -s nocasematch
-    for _pat in $CES_HEAVY_MODELS; do
-        [[ "$MODEL" == *"$_pat"* ]] && { HEAVY=1; break; }
+    for pat in $1; do
+        [[ "$MODEL" == *"$pat"* ]] && { hit=0; break; }
     done
     shopt -u nocasematch
+    return $hit
+}
+
+TIER=0
+if [[ -n "$MODEL" ]]; then
+    if   _model_in "$CES_APEX_MODELS";  then TIER=2
+    elif _model_in "$CES_HEAVY_MODELS"; then TIER=1
+    fi
 fi
 
 # ── Git branch, read from the filesystem rather than by running git ──────────
@@ -308,12 +352,23 @@ else
     D=$'\033[38;5;'"${CD}"'m'   # dim — separators and secondary text
     G=$'\033[38;5;'"${CG}"'m'   # branch
     R=$'\033[0m'
-    SD=$'\033[38;5;'"${BD}"'m'  # shadow
+    # Sockets and nasal cavity are true black by default, so they read as holes
+    # punched through the bone rather than as dark-coloured fill.
+    VC=16
+    # Tier 2 inverts that relationship. The three bone tones collapse to
+    # near-black — keeping their relative order so the dome, mass and horns
+    # still separate — and the holes take the theme's lit tone instead. The
+    # skull stops being a lit object with dark holes and becomes a silhouette
+    # with its sockets burning through. Only the banner inverts; the info line
+    # keeps the theme's text colours so it stays legible at every tier.
+    if (( TIER >= 2 )); then
+        VC=$BL
+        BD=16 BM=233 BL=236
+    fi
+    SD=$'\033[38;5;'"${BD}"'m'  # shadow / horns
     SM=$'\033[38;5;'"${BM}"'m'  # bone
     SL=$'\033[38;5;'"${BL}"'m'  # lit
-    # Sockets and nasal cavity: true black, so they read as holes punched
-    # through the bone rather than as dark-coloured fill.
-    V=$'\033[38;5;16m'
+    V=$'\033[38;5;'"${VC}"'m'
     # Pupil: glows red (196) while ~/.ces-working exists — the file is set by
     # a PreToolUse hook and cleared by Stop, so it stays lit during tool-use
     # phases and goes dark when Claude finishes.
@@ -416,7 +471,7 @@ case "${CES_BANNER:-off}" in
         # 9-cell dome top is the plain crown unchanged, so the horns are added
         # beside the skull rather than by reshaping it — the two variants share
         # the same silhouette from the brow down.
-        if (( HEAVY )); then
+        if (( TIER )); then
             printf '%s\n' "${SD}█▄           ▄█${R}"
             printf '%s\n' "${SD}▀██${SL}▄▄▄▄▄▄▄▄▄${SD}██▀${R}"
         else
@@ -437,7 +492,7 @@ case "${CES_BANNER:-off}" in
         # Nose: two 1px dots (SM:4+V:1+SM:3+V:1+SM:4=13).
         # Tooth gaps use V (black), no purple.
         # Same split as full: crown swaps, body is shared. 1+1+9+1+1 and 1+11+1.
-        if (( HEAVY )); then
+        if (( TIER )); then
             printf '%s\n' "${SD}█▄         ▄█${R}"
             printf '%s\n' "${SD}▀${SL}███████████${SD}▀${R}"
         else
