@@ -250,27 +250,30 @@ case "${CES_BANNER:-off}" in
         # Half blocks appear only on the outer edge where the terminal
         # background showing through forms the silhouette.
         #
-        # Eye sockets: 3px wide × 2 tall (SM:3+V:3+SM:3+V:3+SM:3=15).
+        # Eye sockets: 3px wide × 2 tall; bridge widened to 5px so they read
+        # as clearly separated (SM:2+V:3+SM:5+V:3+SM:2=15).
         # Nose: inverted heart — two 1px nostril dots (row 7) converge into
-        # a 3px merged opening (row 8), giving the pear/triangle read.
+        # a 3px merged opening (row 8).
+        # No purple rows; tooth gaps use true black (V) for clean definition.
         printf '%s\n' "${SL}   ▄▄▄▄▄▄▄▄▄${R}"
         printf '%s\n' "${SL} █████████████${R}"
         printf '%s\n' "${SM}███████████████${R}"
-        printf '%s\n' "${SD}███████████████${R}"
-        printf '%s\n' "${SM}███${V}███${SM}███${V}███${SM}███${R}"
-        printf '%s\n' "${SM}███${V}███${SM}███${V}███${SM}███${R}"
+        printf '%s\n' "${SM}███████████████${R}"
+        printf '%s\n' "${SM}██${V}███${SM}█████${V}███${SM}██${R}"
+        printf '%s\n' "${SM}██${V}███${SM}█████${V}███${SM}██${R}"
         printf '%s\n' "${SM}█████${V}█${SM}███${V}█${SM}█████${R}"
         printf '%s\n' "${SM}██████${V}███${SM}██████${R}"
-        printf '%s\n' "${SD} █████████████${R}"
-        printf '%s\n' "${SM}  ██${SD}█${SM}██${SD}█${SM}██${SD}█${SM}██${R}"
+        printf '%s\n' "${SM} █████████████${R}"
+        printf '%s\n' "${SM}  ██${V}█${SM}██${V}█${SM}██${V}█${SM}██${R}"
         ;;
     small)
-        # 13px wide. Eyes: SM:2+V:3+SM:3+V:3+SM:2=13 (wider bone border than
-        # before). Nose: two 1px nostril dots (SM:4+V:1+SM:3+V:1+SM:4=13).
+        # 13px wide. Eyes: SM:2+V:3+SM:3+V:3+SM:2=13.
+        # Nose: two 1px dots (SM:4+V:1+SM:3+V:1+SM:4=13).
+        # Tooth gaps use V (black), no purple.
         printf '%s\n' "${SL} ███████████${R}"
         printf '%s\n' "${SM}██${V}███${SM}███${V}███${SM}██${R}"
         printf '%s\n' "${SM}████${V}█${SM}███${V}█${SM}████${R}"
-        printf '%s\n' "${SM}█${SD}█${SM}██${SD}█${SM}███${SD}█${SM}██${SD}█${SM}█${R}"
+        printf '%s\n' "${SM}█${V}█${SM}██${V}█${SM}███${V}█${SM}██${V}█${SM}█${R}"
         ;;
 esac
 
