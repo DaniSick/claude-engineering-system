@@ -82,13 +82,14 @@ _jobj() {
     REPLY="${s#*\"$k\":\{}"
 }
 
-MODEL="" DIR="" PCT="" BRANCH="" STYLE=""
+MODEL="" DIR="" PCT="" BRANCH="" STYLE="" STREAMING=""
 
 _jobj "$INPUT" model      && { _jget "$REPLY" display_name    && MODEL="$REPLY"; }
 _jobj "$INPUT" workspace  && { _jget "$REPLY" current_dir     && DIR="$REPLY"; }
 _jobj "$INPUT" context_window && { _jget "$REPLY" used_percentage && PCT="$REPLY"; }
 _jobj "$INPUT" output_style   && { _jget "$REPLY" name        && STYLE="$REPLY"; }
 [[ -z "$DIR" ]] && { _jget "$INPUT" cwd && DIR="$REPLY"; }
+_jget "$INPUT" is_streaming && STREAMING="$REPLY"
 
 # ── Git branch, read from the filesystem rather than by running git ──────────
 # Walks up looking for .git. A directory holds HEAD directly; a worktree or
@@ -179,7 +180,16 @@ else
     # Sockets and nasal cavity: true black, so they read as holes punched
     # through the bone rather than as dark-coloured fill.
     V=$'\033[38;5;16m'
+    # Pupil: glows red (196) while is_streaming=true in the JSON; falls back
+    # to socket black so idle eyes stay dark. No token cost — bash only.
+    if [[ "$STREAMING" == "true" ]]; then
+        PU=$'\033[38;5;196m'
+    else
+        PU="$V"
+    fi
 fi
+# NO_COLOR path: PU stays empty like V, so the row degrades to colourless.
+[[ -n "${NO_COLOR:-}" ]] && PU=""
 
 # Only treat PCT as a number if it actually is one. An absent or malformed
 # field must not reach the arithmetic: a syntax error there writes to stderr on
@@ -260,7 +270,7 @@ case "${CES_BANNER:-off}" in
         printf '%s\n' "${SM}███████████████${R}"
         printf '%s\n' "${SM}███████████████${R}"
         printf '%s\n' "${SM}██${V}███${SM}█████${V}███${SM}██${R}"
-        printf '%s\n' "${SM}██${V}███${SM}█████${V}███${SM}██${R}"
+        printf '%s\n' "${SM}██${V}█${PU}█${V}█${SM}█████${V}█${PU}█${V}█${SM}██${R}"
         printf '%s\n' "${SM}█████${V}█${SM}███${V}█${SM}█████${R}"
         printf '%s\n' "${SM}██████${V}███${SM}██████${R}"
         printf '%s\n' "${SM} █████████████${R}"
@@ -271,7 +281,7 @@ case "${CES_BANNER:-off}" in
         # Nose: two 1px dots (SM:4+V:1+SM:3+V:1+SM:4=13).
         # Tooth gaps use V (black), no purple.
         printf '%s\n' "${SL} ███████████${R}"
-        printf '%s\n' "${SM}██${V}███${SM}███${V}███${SM}██${R}"
+        printf '%s\n' "${SM}██${V}█${PU}█${V}█${SM}███${V}█${PU}█${V}█${SM}██${R}"
         printf '%s\n' "${SM}████${V}█${SM}███${V}█${SM}████${R}"
         printf '%s\n' "${SM}█${V}█${SM}██${V}█${SM}███${V}█${SM}██${V}█${SM}█${R}"
         ;;
