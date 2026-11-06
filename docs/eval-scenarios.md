@@ -344,10 +344,15 @@ PASS  row:void-horns row 0 is colour 16
 PASS  row:void-dome row 2 is colour 16
 PASS  row:void-mass row 3 is colour 16
 PASS  tone:void-bone colour 230 absent
+PASS  row:void-holes row 5 is colour 238
+PASS  tone:void-white colour 255 absent
 PASS  row:demon-horns row 0 is colour 54
 PASS  row:demon-mass row 3 is colour 230
+PASS  row:demon-holes row 5 is colour 16
+PASS  row:pupil-void-yellow row 6 is colour 226
+PASS  row:pupil-demon-red row 6 is colour 196
 
-24 passed  0 failed
+29 passed  0 failed
 ```
 
 **Red flags**: Any FAIL line. Non-zero exit code.
@@ -398,7 +403,9 @@ lowercase model id, an apex model, a non-heavy model, a model outside both lists
 with no model field at all. The `row:*` and `tone:*` checks assert the palette, which row counts
 cannot see — tiers 1 and 2 share a silhouette and differ only in colour. `row:*` pins a given
 banner row to a tone, because the tier-2 rule is that the skeleton is all *one* colour; "is
-colour X present somewhere" is too weak to express that.
+colour X present somewhere" is too weak to express that. Pupil colour (yellow at apex, red
+elsewhere) is checked the same way, toggling `~/.ces-working` directly rather than depending on
+a live tool call.
 
 **Manual check — shape**:
 ```bash
@@ -416,10 +423,23 @@ printf '{"model":{"display_name":"Fable 5.1"}}' \
   | CES_THEME=ghost CES_BANNER=full bash ~/.claude/statusline/ces-statusline.sh \
   | cat -v | sed 's/\^\[\[38;5;\([0-9]*\)m/<\1>/g' | head -8
 ```
-Every skeleton row must open `<16>` — horns, dome and mass alike, one flat black — with
-`<255>` appearing only in the sockets, nasal cavity and tooth gaps. The same command with
-`Opus 5` must show `<54>` horns and `<230>` bone against `<16>` sockets: the inverse
-relationship, and with its shading intact.
+Every skeleton row must open `<16>` — horns, dome and mass alike, one flat black — with `<238>`
+(mid-grey, not `<255>` white) appearing only in the sockets, nasal cavity and tooth gaps. The
+same command with `Opus 5` must show `<54>` horns and `<230>` bone against `<16>` sockets: the
+inverse relationship, and with its shading intact.
+
+**Manual check — working-state pupil colour**:
+```bash
+touch ~/.ces-working
+for m in "Fable 5.1" "Opus 5"; do
+  printf '  %-10s ' "$m"
+  printf '{"model":{"display_name":"%s"}}' "$m" \
+    | CES_THEME=ghost CES_BANNER=full bash ~/.claude/statusline/ces-statusline.sh \
+    | cat -v | sed 's/\^\[\[38;5;\([0-9]*\)m/<\1>/g' | sed -n '7p'
+done
+rm -f ~/.ces-working
+```
+`Fable 5.1` must show `<226>` (yellow) at the pupil cells; `Opus 5` must show `<196>` (red).
 
 **Red flags**: an unlisted or retired model producing anything other than the plain skull. A
 blank status line for any model name. An inverted banner whose info line also inverted — text

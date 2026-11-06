@@ -215,9 +215,26 @@ if [[ "${1:-}" == "--test" ]]; then
     _check_row_tone void-dome  "$_FABLE" 2 16
     _check_row_tone void-mass  "$_FABLE" 3 16
     _check_tone     void-bone  "$_FABLE" 230 lacks
-    # Tier 1 must keep its shading: horns and mass are different tones there.
+    # Sockets/nose/teeth: mid-grey (238), neither white nor the skeleton's own
+    # black. Row 5 is the eye-socket row in the full, horned banner (rows:
+    # 0-1 horns, 2 dome, 3-4 mass, 5 sockets, 6 pupils, 7-8 nose, 9 jaw gap,
+    # 10 teeth).
+    _check_row_tone void-holes "$_FABLE" 5 238
+    _check_tone     void-white "$_FABLE" 255 lacks
+    # Tier 1 must keep its shading: horns and mass are different tones there,
+    # and its holes stay true black (16), unaffected by the tier-2 rule.
     _check_row_tone demon-horns "$_OPUS" 0 54
     _check_row_tone demon-mass  "$_OPUS" 3 230
+    _check_row_tone demon-holes "$_OPUS" 5 16
+
+    # Working-state pupil colour: yellow at apex, red everywhere else. Toggle
+    # the hook's own flag file so this doesn't depend on being mid-tool-call.
+    _WORKFLAG="${HOME}/.ces-working"
+    _was_working=0; [[ -f "$_WORKFLAG" ]] && _was_working=1
+    touch "$_WORKFLAG"
+    _check_row_tone pupil-void-yellow "$_FABLE" 6 226
+    _check_row_tone pupil-demon-red   "$_OPUS"  6 196
+    (( _was_working )) || rm -f "$_WORKFLAG"
 
     printf '\n%d passed  %d failed\n' "$PASS" "$FAIL"
     (( FAIL == 0 )); exit $?
@@ -375,26 +392,36 @@ else
     # punched through the bone rather than as dark-coloured fill.
     VC=16
     # Tier 2 inverts that relationship. The whole skeleton — dome, mass and
-    # horns alike — collapses to the single true black the horns already used,
-    # and the holes take the theme's lit tone instead. No shading survives on
-    # purpose: a three-step near-black ramp just muddied the silhouette, and
-    # the form reads better carried entirely by the sockets, nasal cavity and
-    # tooth gaps burning through a flat void. Only the banner inverts; the
-    # info line keeps the theme's text colours so it stays legible at every
-    # tier.
+    # horns alike — collapses to the single true black the horns already used.
+    # The holes take a mid-grey (238), not the theme's lit tone: true white
+    # read as too stark against a flat void, but they also can't reuse the
+    # skeleton's 16 or they'd vanish into it — 238 is the darkest tone that
+    # still separates from the surrounding black. No shading survives in the
+    # skeleton on purpose: a three-step near-black ramp just muddied the
+    # silhouette, and the form reads better carried entirely by the sockets,
+    # nasal cavity and tooth gaps punched through it. Only the banner inverts;
+    # the info line keeps the theme's text colours so it stays legible at
+    # every tier.
     if (( TIER >= 2 )); then
-        VC=$BL
+        VC=238
         BD=16 BM=16 BL=16
     fi
     SD=$'\033[38;5;'"${BD}"'m'  # shadow / horns
     SM=$'\033[38;5;'"${BM}"'m'  # bone
     SL=$'\033[38;5;'"${BL}"'m'  # lit
     V=$'\033[38;5;'"${VC}"'m'
-    # Pupil: glows red (196) while ~/.ces-working exists — the file is set by
-    # a PreToolUse hook and cleared by Stop, so it stays lit during tool-use
-    # phases and goes dark when Claude finishes.
+    # Pupil: glows while ~/.ces-working exists — the file is set by a
+    # PreToolUse hook and cleared by Stop, so it stays lit during tool-use
+    # phases and goes dark when Claude finishes. Colour depends on tier: red
+    # (196) for the plain skull and horns, yellow (226) once the skeleton has
+    # gone to apex black — red read as another socket against that
+    # background, where yellow still stands out as a glow.
     if [[ -f "${HOME}/.ces-working" ]]; then
-        PU=$'\033[38;5;196m'
+        if (( TIER >= 2 )); then
+            PU=$'\033[38;5;226m'
+        else
+            PU=$'\033[38;5;196m'
+        fi
     else
         PU="$V"
     fi

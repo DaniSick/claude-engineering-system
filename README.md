@@ -238,10 +238,13 @@ tiers, and the model running the session picks one:
 ```
 
 Tier 2 keeps the horned silhouette and inverts the palette. The whole skeleton — dome, mass and
-horns alike — goes to the single true black the horns already used, and the sockets, nasal
-cavity and tooth gaps take the theme's lit tone instead. No shading survives, deliberately: a
-near-black ramp only muddied the silhouette, and the form reads better carried entirely by the
-holes burning through a flat void. The pupils still flare red during tool use. Only the banner
+horns alike — goes to the single true black the horns already used. The sockets, nasal cavity
+and tooth gaps take a mid-grey (`238`) rather than the theme's lit tone: stark white read as too
+harsh against a flat void, but they also can't reuse the skeleton's black or they'd vanish into
+it. No shading survives in the skeleton, deliberately: a near-black ramp only muddied the
+silhouette, and the form reads better carried entirely by the holes punched through it. The
+pupils glow yellow during tool use at this tier — red read as just another grey socket against
+the black, where yellow still stands out as a glow; tiers 0 and 1 keep red. Only the banner
 inverts, so the info line keeps the theme's text colours and stays legible at every tier.
 
 Both lists are **family substrings**, matched case-insensitively against the model's display
