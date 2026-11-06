@@ -165,6 +165,20 @@ if [[ "${1:-}" == "--test" ]]; then
                         || _fail "tone:${label} colour ${want} missing"
         fi
     }
+    # Which colour a specific banner row opens with. "Is colour X anywhere in
+    # the art" is too weak to express the tier-2 rule — that the skeleton is
+    # all one colour, the horns' — so these pin a row to a tone instead.
+    # Row 0 is the horn tip, 2 the dome, 3 the solid mass.
+    _check_row_tone() {
+        local label="$1" json="$2" idx="$3" want="$4" i=0 row hit=""
+        while IFS= read -r row; do
+            (( i == idx )) && hit="$row"
+            (( i++ ))
+        done < <(printf '%s' "$json" | CES_THEME=ghost CES_BANNER=full bash "$_self")
+        [[ "$hit" == *"38;5;${want}m"* ]] \
+            && _ok   "row:${label} row ${idx} is colour ${want}" \
+            || _fail "row:${label} row ${idx} expected colour ${want}"
+    }
 
     _OPUS='{"model":{"display_name":"Opus 5"}}'
     _LOWER='{"model":{"display_name":"claude-opus-5"}}'
@@ -194,11 +208,16 @@ if [[ "${1:-}" == "--test" ]]; then
     # Apex wears the same horns as heavy — it differs by palette, not shape.
     _check_rows void-full    full 12 "$_FABLE"
 
-    # Palette inversion. 233 is the inverted bone and exists only at tier 2;
-    # 230 is ghost's normal bone and must be gone once the skull inverts.
-    _check_tone void-body  "$_FABLE" 233
-    _check_tone void-bone  "$_FABLE" 230 lacks
-    _check_tone demon-bone "$_OPUS"  230
+    # Palette inversion. At tier 2 the skeleton is one flat colour — the same
+    # true black the horns use — so horns, dome and mass must all report 16,
+    # and no theme bone tone may survive anywhere in the art.
+    _check_row_tone void-horns "$_FABLE" 0 16
+    _check_row_tone void-dome  "$_FABLE" 2 16
+    _check_row_tone void-mass  "$_FABLE" 3 16
+    _check_tone     void-bone  "$_FABLE" 230 lacks
+    # Tier 1 must keep its shading: horns and mass are different tones there.
+    _check_row_tone demon-horns "$_OPUS" 0 54
+    _check_row_tone demon-mass  "$_OPUS" 3 230
 
     printf '\n%d passed  %d failed\n' "$PASS" "$FAIL"
     (( FAIL == 0 )); exit $?
@@ -355,15 +374,17 @@ else
     # Sockets and nasal cavity are true black by default, so they read as holes
     # punched through the bone rather than as dark-coloured fill.
     VC=16
-    # Tier 2 inverts that relationship. The three bone tones collapse to
-    # near-black — keeping their relative order so the dome, mass and horns
-    # still separate — and the holes take the theme's lit tone instead. The
-    # skull stops being a lit object with dark holes and becomes a silhouette
-    # with its sockets burning through. Only the banner inverts; the info line
-    # keeps the theme's text colours so it stays legible at every tier.
+    # Tier 2 inverts that relationship. The whole skeleton — dome, mass and
+    # horns alike — collapses to the single true black the horns already used,
+    # and the holes take the theme's lit tone instead. No shading survives on
+    # purpose: a three-step near-black ramp just muddied the silhouette, and
+    # the form reads better carried entirely by the sockets, nasal cavity and
+    # tooth gaps burning through a flat void. Only the banner inverts; the
+    # info line keeps the theme's text colours so it stays legible at every
+    # tier.
     if (( TIER >= 2 )); then
         VC=$BL
-        BD=16 BM=233 BL=236
+        BD=16 BM=16 BL=16
     fi
     SD=$'\033[38;5;'"${BD}"'m'  # shadow / horns
     SM=$'\033[38;5;'"${BM}"'m'  # bone

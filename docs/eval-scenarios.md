@@ -340,11 +340,14 @@ PASS  variant:sonnet-full rows=11
 PASS  variant:retired-full rows=11
 PASS  variant:nomodel-full rows=11
 PASS  variant:void-full rows=12
-PASS  tone:void-body colour 233 present
+PASS  row:void-horns row 0 is colour 16
+PASS  row:void-dome row 2 is colour 16
+PASS  row:void-mass row 3 is colour 16
 PASS  tone:void-bone colour 230 absent
-PASS  tone:demon-bone colour 230 present
+PASS  row:demon-horns row 0 is colour 54
+PASS  row:demon-mass row 3 is colour 230
 
-21 passed  0 failed
+24 passed  0 failed
 ```
 
 **Red flags**: Any FAIL line. Non-zero exit code.
@@ -392,8 +395,10 @@ first, so a model in both lists resolves to tier 2.
 
 **Verification**: covered by S3. The `variant:*` checks assert row counts for a heavy model, a
 lowercase model id, an apex model, a non-heavy model, a model outside both lists, and a payload
-with no model field at all. The `tone:*` checks assert the palette, which row counts cannot see
-— tiers 1 and 2 share a silhouette and differ only in colour.
+with no model field at all. The `row:*` and `tone:*` checks assert the palette, which row counts
+cannot see — tiers 1 and 2 share a silhouette and differ only in colour. `row:*` pins a given
+banner row to a tone, because the tier-2 rule is that the skeleton is all *one* colour; "is
+colour X present somewhere" is too weak to express that.
 
 **Manual check — shape**:
 ```bash
@@ -411,8 +416,10 @@ printf '{"model":{"display_name":"Fable 5.1"}}' \
   | CES_THEME=ghost CES_BANNER=full bash ~/.claude/statusline/ces-statusline.sh \
   | cat -v | sed 's/\^\[\[38;5;\([0-9]*\)m/<\1>/g' | head -8
 ```
-Expect `<16>` horns, `<233>`/`<236>` bone and `<255>` sockets. The same command with
-`Opus 5` must show `<54>` horns, `<230>` bone and `<16>` sockets — the inverse relationship.
+Every skeleton row must open `<16>` — horns, dome and mass alike, one flat black — with
+`<255>` appearing only in the sockets, nasal cavity and tooth gaps. The same command with
+`Opus 5` must show `<54>` horns and `<230>` bone against `<16>` sockets: the inverse
+relationship, and with its shading intact.
 
 **Red flags**: an unlisted or retired model producing anything other than the plain skull. A
 blank status line for any model name. An inverted banner whose info line also inverted — text
