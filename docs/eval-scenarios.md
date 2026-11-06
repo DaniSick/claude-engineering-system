@@ -346,13 +346,16 @@ PASS  row:void-mass row 3 is colour 16
 PASS  tone:void-bone colour 230 absent
 PASS  row:void-holes row 5 is colour 238
 PASS  tone:void-white colour 255 absent
-PASS  row:demon-horns row 0 is colour 54
-PASS  row:demon-mass row 3 is colour 230
+PASS  row:demon-horns row 0 is colour 196
+PASS  row:demon-dome row 2 is colour 196
+PASS  row:demon-mass row 3 is colour 196
 PASS  row:demon-holes row 5 is colour 16
+PASS  tone:demon-bone colour 230 absent
+PASS  row:pupil-sonnet-red row 5 is colour 196
+PASS  row:pupil-demon-yellow row 6 is colour 226
 PASS  row:pupil-void-yellow row 6 is colour 226
-PASS  row:pupil-demon-red row 6 is colour 196
 
-29 passed  0 failed
+32 passed  0 failed
 ```
 
 **Red flags**: Any FAIL line. Non-zero exit code.
@@ -392,20 +395,27 @@ First column should be 15 for the widest rows.
 
 ### S6 — Model-driven banner tier
 
-**Property**: the banner has three tiers, picked by the session model — plain skull (tier 0),
-horns for `CES_HEAVY_MODELS` (tier 1, default `opus`), horns plus an inverted palette for
-`CES_APEX_MODELS` (tier 2, default `fable`). Matching is substring and case-insensitive
-against `model.display_name`, so it survives version bumps without an edit. Apex is tested
-first, so a model in both lists resolves to tier 2.
+**Property**: the banner has three tiers, picked by the session model:
+
+| Tier | Skeleton | Holes | Pupil (working) | Set by |
+|------|----------|-------|------------------|--------|
+| 0 | theme palette | black | red | anything unmatched |
+| 1 | flat red | black | yellow | `CES_HEAVY_MODELS` (default `opus`) |
+| 2 | flat black | grey | yellow | `CES_APEX_MODELS` (default `fable`) |
+
+Matching is substring and case-insensitive against `model.display_name`, so it survives version
+bumps without an edit. Apex is tested first, so a model in both lists resolves to tier 2.
 
 **Verification**: covered by S3. The `variant:*` checks assert row counts for a heavy model, a
 lowercase model id, an apex model, a non-heavy model, a model outside both lists, and a payload
-with no model field at all. The `row:*` and `tone:*` checks assert the palette, which row counts
-cannot see — tiers 1 and 2 share a silhouette and differ only in colour. `row:*` pins a given
-banner row to a tone, because the tier-2 rule is that the skeleton is all *one* colour; "is
-colour X present somewhere" is too weak to express that. Pupil colour (yellow at apex, red
-elsewhere) is checked the same way, toggling `~/.ces-working` directly rather than depending on
-a live tool call.
+with no model field at all. The `row:*` and `tone:*` checks assert the palette, which row
+counts cannot see — tiers 1 and 2 share a silhouette and differ only in colour. `row:*` pins a
+given banner row to a tone, because the tier-1/2 rule is that the skeleton is all *one* colour;
+"is colour X present somewhere" is too weak to express that. Pupil colour is checked the same
+way at all three tiers, toggling `~/.ces-working` directly rather than depending on a live tool
+call. Horned rows shift by one versus the plain skull (no second crown row), so the plain
+skull's pupil check uses row index 5 where the horned variants use 6 — this is the exact
+off-by-one the suite caught once already; see the inline comment above the checks.
 
 **Manual check — shape**:
 ```bash
@@ -417,36 +427,41 @@ done
 ```
 The first three rows start with `█▄` (horns); the last two with spaces (plain crown).
 
-**Manual check — inversion**:
+**Manual check — skeleton colour**:
 ```bash
-printf '{"model":{"display_name":"Fable 5.1"}}' \
-  | CES_THEME=ghost CES_BANNER=full bash ~/.claude/statusline/ces-statusline.sh \
-  | cat -v | sed 's/\^\[\[38;5;\([0-9]*\)m/<\1>/g' | head -8
+for m in "Sonnet 4.6" "Opus 5" "Fable 5.1"; do
+  printf '\n=== %s ===\n' "$m"
+  printf '{"model":{"display_name":"%s"}}' "$m" \
+    | CES_THEME=ghost CES_BANNER=full bash ~/.claude/statusline/ces-statusline.sh \
+    | cat -v | sed 's/\^\[\[38;5;\([0-9]*\)m/<\1>/g' | head -4
+done
 ```
-Every skeleton row must open `<16>` — horns, dome and mass alike, one flat black — with `<238>`
-(mid-grey, not `<255>` white) appearing only in the sockets, nasal cavity and tooth gaps. The
-same command with `Opus 5` must show `<54>` horns and `<230>` bone against `<16>` sockets: the
-inverse relationship, and with its shading intact.
+`Sonnet 4.6` (tier 0) shows the theme's own tones (`<255>`/`<230>` in `ghost`). `Opus 5`
+(tier 1) shows `<196>` (flat red) on every skeleton row. `Fable 5.1` (tier 2) shows `<16>`
+(flat black) on every skeleton row, with `<238>` (grey, not `<255>` white) appearing only at
+the sockets, nasal cavity and tooth gaps.
 
 **Manual check — working-state pupil colour**:
 ```bash
 touch ~/.ces-working
-for m in "Fable 5.1" "Opus 5"; do
-  printf '  %-10s ' "$m"
+for m in "Sonnet 4.6" "Opus 5" "Fable 5.1"; do
+  printf '  %-12s ' "$m"
   printf '{"model":{"display_name":"%s"}}' "$m" \
     | CES_THEME=ghost CES_BANNER=full bash ~/.claude/statusline/ces-statusline.sh \
-    | cat -v | sed 's/\^\[\[38;5;\([0-9]*\)m/<\1>/g' | sed -n '7p'
+    | cat -v | sed 's/\^\[\[38;5;\([0-9]*\)m/<\1>/g' | sed -n '6,7p' | tr -d '\n'; echo
 done
 rm -f ~/.ces-working
 ```
-`Fable 5.1` must show `<226>` (yellow) at the pupil cells; `Opus 5` must show `<196>` (red).
+`Sonnet 4.6` must show `<196>` (red) at the pupil cells; `Opus 5` and `Fable 5.1` must both
+show `<226>` (yellow).
 
 **Red flags**: an unlisted or retired model producing anything other than the plain skull. A
-blank status line for any model name. An inverted banner whose info line also inverted — text
-colours must not follow the tier. A horn row whose visible width is not 15 (`full`) or 13
-(`small`) — S3 catches this, but only if the tier cases stay in the test list when the art
-changes.
+blank status line for any model name. A repainted banner (tier 1 or 2) whose info line also
+changed colour — text colours must not follow the tier. A red pupil surviving at tier 1 or 2,
+or a yellow one at tier 0. A horn row whose visible width is not 15 (`full`) or 13 (`small`) —
+S3 catches this, but only if the tier cases stay in the test list when the art changes.
 
 **Maintenance note**: adding a model family is one word in `CES_HEAVY_MODELS` or
 `CES_APEX_MODELS` at the top of `statusline/ces-statusline.sh`. One matcher (`_model_in`)
-serves both lists, and nothing else in the script branches on model identity.
+serves both lists, and the skeleton/pupil colour for each tier is resolved in the two small
+`if/elif` blocks right below them — nothing else in the script branches on model identity.

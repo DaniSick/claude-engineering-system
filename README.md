@@ -223,29 +223,33 @@ end of each ramp is avoided. Swap `GLYPH` for anything your font renders.
 `CES_BANNER=full` or `CES_BANNER=small` draws pixel art above the info line. The art has three
 tiers, and the model running the session picks one:
 
-| Tier | Look | Set by |
-|------|------|--------|
-| 0 | plain skull | anything unmatched |
-| 1 | horns | `CES_HEAVY_MODELS` — default `opus` |
-| 2 | horns, palette inverted | `CES_APEX_MODELS` — default `fable` |
+| Tier | Skeleton | Holes | Pupil (working) | Set by |
+|------|----------|-------|------------------|--------|
+| 0 | theme palette | black | red | anything unmatched |
+| 1 | flat red | black | yellow | `CES_HEAVY_MODELS` — default `opus` |
+| 2 | flat black | grey | yellow | `CES_APEX_MODELS` — default `fable` |
 
 ```
-   ▄▄▄▄▄▄▄▄▄         █▄           ▄█
- █████████████       ▀██▄▄▄▄▄▄▄▄▄██▀
-███████████████       █████████████
-███████████████      ███████████████
-     tier 0              tier 1
+   ▄▄▄▄▄▄▄▄▄         █▄           ▄█         █▄           ▄█
+ █████████████       ▀██▄▄▄▄▄▄▄▄▄██▀         ▀██▄▄▄▄▄▄▄▄▄██▀
+███████████████       █████████████           █████████████
+███████████████      ███████████████         ███████████████
+     tier 0              tier 1 (red)          tier 2 (black)
 ```
 
-Tier 2 keeps the horned silhouette and inverts the palette. The whole skeleton — dome, mass and
-horns alike — goes to the single true black the horns already used. The sockets, nasal cavity
-and tooth gaps take a mid-grey (`238`) rather than the theme's lit tone: stark white read as too
-harsh against a flat void, but they also can't reuse the skeleton's black or they'd vanish into
-it. No shading survives in the skeleton, deliberately: a near-black ramp only muddied the
-silhouette, and the form reads better carried entirely by the holes punched through it. The
-pupils glow yellow during tool use at this tier — red read as just another grey socket against
-the black, where yellow still stands out as a glow; tiers 0 and 1 keep red. Only the banner
-inverts, so the info line keeps the theme's text colours and stays legible at every tier.
+Tiers 1 and 2 each repaint the *whole* skeleton — dome, mass and horns alike — as one flat
+colour rather than the theme's own shaded bone tones: tier 1 to red, tier 2 to the true black
+its horns already used. No shading survives in either, deliberately — a multi-tone ramp only
+muddied the silhouette, and the form reads better carried entirely by the sockets, nasal
+cavity and tooth gaps punched through a flat field. Tier 2's holes move to a mid-grey (`238`)
+rather than true white or the skeleton's own black: white read as too harsh against the void,
+and black would vanish into it. Tier 1's holes stay true black — red against black needs no
+grey step to separate.
+
+Both repainted tiers also move the working-state pupil to yellow: red stops reading as a glow
+once the skeleton itself is red or black, where yellow still stands out against both. Tier 0
+is the only one that keeps the theme's palette and the red pupil. Only the banner repaints —
+the info line keeps the theme's text colours and stays legible at every tier.
 
 Both lists are **family substrings**, matched case-insensitively against the model's display
 name:

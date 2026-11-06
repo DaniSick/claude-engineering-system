@@ -28,9 +28,16 @@ CES_THEME_NAMES="ghost ember matrix ice mono default"
 
 # The banner has three tiers, picked by the model driving the session:
 #
-#   0  plain skull          anything unmatched
-#   1  horns                CES_HEAVY_MODELS
-#   2  horns, inverted      CES_APEX_MODELS
+#   tier  skeleton                    pupil (working)   picked by
+#   0     plain skull, theme palette  red               anything unmatched
+#   1     horns, flat red             yellow            CES_HEAVY_MODELS
+#   2     horns, flat black           yellow            CES_APEX_MODELS
+#
+# Tiers 1 and 2 each paint the whole skeleton — dome, mass and horns alike —
+# one flat colour rather than the theme's own shaded bone tones, and both move
+# the working-state pupil to yellow because a red pupil stops reading as a
+# glow once the skeleton itself is red or black. Tier 0 is the only one that
+# keeps the theme's palette and the red pupil.
 #
 # Both lists are space-separated substrings, matched case-insensitively against
 # the model's display name. These are family names, not exact ids, so "opus"
@@ -218,22 +225,29 @@ if [[ "${1:-}" == "--test" ]]; then
     # Sockets/nose/teeth: mid-grey (238), neither white nor the skeleton's own
     # black. Row 5 is the eye-socket row in the full, horned banner (rows:
     # 0-1 horns, 2 dome, 3-4 mass, 5 sockets, 6 pupils, 7-8 nose, 9 jaw gap,
-    # 10 teeth).
+    # 10 teeth). Horned rows shift by one versus the plain skull (no second
+    # crown row), which is exactly the off-by-one this suite caught earlier —
+    # these row indices are pinned here so it can't silently come back.
     _check_row_tone void-holes "$_FABLE" 5 238
     _check_tone     void-white "$_FABLE" 255 lacks
-    # Tier 1 must keep its shading: horns and mass are different tones there,
-    # and its holes stay true black (16), unaffected by the tier-2 rule.
-    _check_row_tone demon-horns "$_OPUS" 0 54
-    _check_row_tone demon-mass  "$_OPUS" 3 230
+    # Tier 1 is flat red across horns, dome and mass alike — not the theme's
+    # own shaded bone tones — with holes unaffected, staying true black (16).
+    _check_row_tone demon-horns "$_OPUS" 0 196
+    _check_row_tone demon-dome  "$_OPUS" 2 196
+    _check_row_tone demon-mass  "$_OPUS" 3 196
     _check_row_tone demon-holes "$_OPUS" 5 16
+    _check_tone     demon-bone  "$_OPUS" 230 lacks
 
-    # Working-state pupil colour: yellow at apex, red everywhere else. Toggle
-    # the hook's own flag file so this doesn't depend on being mid-tool-call.
+    # Working-state pupil colour: red only at tier 0, yellow from tier 1 up.
+    # Toggle the hook's own flag file so this doesn't depend on being
+    # mid-tool-call. The plain skull (tier 0) has a single-row crown, so its
+    # pupil row sits at index 5, one less than the horned variants' index 6.
     _WORKFLAG="${HOME}/.ces-working"
     _was_working=0; [[ -f "$_WORKFLAG" ]] && _was_working=1
     touch "$_WORKFLAG"
-    _check_row_tone pupil-void-yellow "$_FABLE" 6 226
-    _check_row_tone pupil-demon-red   "$_OPUS"  6 196
+    _check_row_tone pupil-sonnet-red  "$_SONNET" 5 196
+    _check_row_tone pupil-demon-yellow "$_OPUS"  6 226
+    _check_row_tone pupil-void-yellow  "$_FABLE" 6 226
     (( _was_working )) || rm -f "$_WORKFLAG"
 
     printf '\n%d passed  %d failed\n' "$PASS" "$FAIL"
@@ -391,18 +405,23 @@ else
     # Sockets and nasal cavity are true black by default, so they read as holes
     # punched through the bone rather than as dark-coloured fill.
     VC=16
-    # Tier 2 inverts that relationship. The whole skeleton — dome, mass and
-    # horns alike — collapses to the single true black the horns already used.
-    # The holes take a mid-grey (238), not the theme's lit tone: true white
-    # read as too stark against a flat void, but they also can't reuse the
-    # skeleton's 16 or they'd vanish into it — 238 is the darkest tone that
-    # still separates from the surrounding black. No shading survives in the
-    # skeleton on purpose: a three-step near-black ramp just muddied the
-    # silhouette, and the form reads better carried entirely by the sockets,
-    # nasal cavity and tooth gaps punched through it. Only the banner inverts;
-    # the info line keeps the theme's text colours so it stays legible at
-    # every tier.
-    if (( TIER >= 2 )); then
+    # Tier 1 flattens the whole skeleton — dome, mass and horns alike — to one
+    # uniform red, replacing the theme's own shaded bone tones rather than
+    # layering onto them. Holes stay true black; red against black needs no
+    # grey step to separate.
+    #
+    # Tier 2 goes further and inverts: the skeleton collapses to the single
+    # true black the horns already used at tier 1, and the holes move to a
+    # mid-grey (238) instead — true white read as too stark against a flat
+    # void, but they also can't reuse the skeleton's own 16 or they'd vanish
+    # into it. No shading survives in either tier's skeleton, deliberately: a
+    # multi-tone ramp just muddied the silhouette, and the form reads better
+    # carried entirely by the sockets, nasal cavity and tooth gaps punched
+    # through a flat field. Only the banner repaints; the info line keeps the
+    # theme's text colours so it stays legible at every tier.
+    if (( TIER == 1 )); then
+        BD=196 BM=196 BL=196
+    elif (( TIER >= 2 )); then
         VC=238
         BD=16 BM=16 BL=16
     fi
@@ -413,11 +432,12 @@ else
     # Pupil: glows while ~/.ces-working exists — the file is set by a
     # PreToolUse hook and cleared by Stop, so it stays lit during tool-use
     # phases and goes dark when Claude finishes. Colour depends on tier: red
-    # (196) for the plain skull and horns, yellow (226) once the skeleton has
-    # gone to apex black — red read as another socket against that
-    # background, where yellow still stands out as a glow.
+    # (196) only at tier 0, yellow (226) from tier 1 up — once the skeleton
+    # itself has gone flat red or flat black, a red pupil reads as just
+    # another same-coloured cell instead of a glow, where yellow still stands
+    # out against both.
     if [[ -f "${HOME}/.ces-working" ]]; then
-        if (( TIER >= 2 )); then
+        if (( TIER >= 1 )); then
             PU=$'\033[38;5;226m'
         else
             PU=$'\033[38;5;196m'
