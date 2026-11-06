@@ -239,51 +239,35 @@ fi
 # This is a persistent bar, not a one-time splash — it redraws every update and
 # holds its rows permanently. That is the trade for having it render at all.
 
-# Both variants are laid out on a fixed grid — 19 columns for full, 13 for
-# small — so the skull stays symmetric. Colour spans are inserted inside the
-# row without changing its visible width; miscounting one row is what makes
-# this kind of art look crooked.
-
-# Laid out on a fixed grid — 21 columns for full, 15 for small — with an odd
-# width so there is a true centre column. Four tones give the skull volume
-# without adding any theme configuration: G is rim light along the cranium,
-# A is bone, D is the socket void, E is the pupil burning inside it. Colour
-# spans never change a row's visible width, which is what makes hand-counted
-# art come out crooked.
+# Both variants use a 13-column body grid with a 2-space left indent so the
+# skull sits slightly right of the status bar's left edge. Colour spans are
+# inserted inside the row without changing its visible width; miscounting one
+# cell is what makes hand-counted terminal art come out crooked.
 
 case "${CES_BANNER:-off}" in
     full)
-        # Every cell inside the silhouette is a full block. Shape is carried
-        # by colour changes between filled cells, never by gaps. Sockets and
-        # nasal cavity are true black (V). The cranium uses SL (lit) fading
-        # through SM (bone ivory) with SD (purple) as the brow shadow band.
-        # Half blocks appear only on the outer edge where the terminal
-        # background showing through forms the silhouette.
-        #
-        # Eye sockets: 3px wide × 2 tall; bridge widened to 5px so they read
-        # as clearly separated (SM:2+V:3+SM:5+V:3+SM:2=15).
-        # Nose: inverted heart — two 1px nostril dots (row 7) converge into
-        # a 3px merged opening (row 8).
-        # No purple rows; tooth gaps use true black (V) for clean definition.
-        printf '%s\n' "${SL}   ▄▄▄▄▄▄▄▄▄${R}"
-        printf '%s\n' "${SL} █████████████${R}"
-        printf '%s\n' "${SM}███████████████${R}"
-        printf '%s\n' "${SM}███████████████${R}"
-        printf '%s\n' "${SM}██${V}███${SM}█████${V}███${SM}██${R}"
-        printf '%s\n' "${SM}██${V}█${PU}█${V}█${SM}█████${V}█${PU}█${V}█${SM}██${R}"
-        printf '%s\n' "${SM}█████${V}█${SM}███${V}█${SM}█████${R}"
-        printf '%s\n' "${SM}██████${V}███${SM}██████${R}"
-        printf '%s\n' "${SM} █████████████${R}"
-        printf '%s\n' "${SM}  ██${V}█${SM}██${V}█${SM}██${V}█${SM}██${R}"
+        # 13-column body, 2-space indent, 9 rows (one duplicate bone row
+        # removed vs. the 10-row version; all features preserved).
+        # Crown row: 4 leading spaces (2 indent + 2 centering) + 9 half-blocks.
+        # Eyes: SM:2+V:3+SM:3+V:3+SM:2=13; bridge 3px (was 5px at 15-wide).
+        # Nose: SM:4+V:1+SM:3+V:1+SM:4=13 dots → SM:5+V:3+SM:5=13 merged.
+        # Tooth gaps: true black (V).
+        printf '%s\n' "    ${SL}▄▄▄▄▄▄▄▄▄${R}"
+        printf '%s\n' "  ${SL}█████████████${R}"
+        printf '%s\n' "  ${SM}█████████████${R}"
+        printf '%s\n' "  ${SM}██${V}███${SM}███${V}███${SM}██${R}"
+        printf '%s\n' "  ${SM}██${V}█${PU}█${V}█${SM}███${V}█${PU}█${V}█${SM}██${R}"
+        printf '%s\n' "  ${SM}████${V}█${SM}███${V}█${SM}████${R}"
+        printf '%s\n' "  ${SM}█████${V}███${SM}█████${R}"
+        printf '%s\n' "  ${SM} ████████████${R}"
+        printf '%s\n' "  ${SM}  ██${V}█${SM}██${V}█${SM}██${V}█${SM}██${R}"
         ;;
     small)
-        # 13px wide. Eyes: SM:2+V:3+SM:3+V:3+SM:2=13.
-        # Nose: two 1px dots (SM:4+V:1+SM:3+V:1+SM:4=13).
-        # Tooth gaps use V (black), no purple.
-        printf '%s\n' "${SL} ███████████${R}"
-        printf '%s\n' "${SM}██${V}█${PU}█${V}█${SM}███${V}█${PU}█${V}█${SM}██${R}"
-        printf '%s\n' "${SM}████${V}█${SM}███${V}█${SM}████${R}"
-        printf '%s\n' "${SM}█${V}█${SM}██${V}█${SM}███${V}█${SM}██${V}█${SM}█${R}"
+        # 13-column body, 2-space indent, 4 rows.
+        printf '%s\n' "  ${SL} ███████████${R}"
+        printf '%s\n' "  ${SM}██${V}█${PU}█${V}█${SM}███${V}█${PU}█${V}█${SM}██${R}"
+        printf '%s\n' "  ${SM}████${V}█${SM}███${V}█${SM}████${R}"
+        printf '%s\n' "  ${SM}█${V}█${SM}██${V}█${SM}███${V}█${SM}██${V}█${SM}█${R}"
         ;;
 esac
 
