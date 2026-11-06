@@ -144,10 +144,10 @@ THEME="${CES_THEME:-ghost}"
 case "$THEME" in
     ghost)    # dark violet, faintly haunted
         GLYPH="ᗝ"; CA=141; CD=103; CG=177; P1=97;  P2=141; P3=205
-        # 54 rather than 60: both sit at red 95, so they read as the same
-        # depth of shadow, but 60 carries green 95 and goes grey against the
-        # violet. 54 drops green to zero and stays in the hue.
-        BD=54;  BM=141; BL=183 ;;
+        # BD stays deep violet (54) so the lower skull and jaw read as a dark
+        # hood/collar accent, preserving the Claude purple aesthetic. BM and BL
+        # switch to warm bone tones so the cranium reads as skull, not ghost.
+        BD=54;  BM=230; BL=255 ;;
     ember)    # warm, embers banking down
         GLYPH="▲"; CA=208; CD=137; CG=180; P1=130; P2=179; P3=203
         BD=94;  BM=208; BL=223 ;;
