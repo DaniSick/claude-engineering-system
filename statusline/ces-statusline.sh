@@ -243,27 +243,33 @@ fi
 
 case "${CES_BANNER:-off}" in
     full)
-        # Every cell inside the silhouette is a full block. Spaces and half
-        # blocks let the terminal background through, which reads as grey
-        # patches sitting inside the skull — so shape is carried by colour
-        # changes between filled cells, never by gaps. Only the sockets and
-        # the nasal cavity are black; everything else is one of the three
-        # purples. Half blocks appear only on the outer edge, where the
-        # background showing through is the silhouette.
+        # Every cell inside the silhouette is a full block. Shape is carried
+        # by colour changes between filled cells, never by gaps. Sockets and
+        # nasal cavity are true black (V). The cranium uses SL (lit) fading
+        # through SM (bone ivory) with SD (purple) as the brow shadow band.
+        # Half blocks appear only on the outer edge where the terminal
+        # background showing through forms the silhouette.
+        #
+        # Eye sockets: 3px wide × 2 tall (SM:3+V:3+SM:3+V:3+SM:3=15).
+        # Nose: inverted heart — two 1px nostril dots (row 7) converge into
+        # a 3px merged opening (row 8), giving the pear/triangle read.
         printf '%s\n' "${SL}   ▄▄▄▄▄▄▄▄▄${R}"
         printf '%s\n' "${SL} █████████████${R}"
         printf '%s\n' "${SM}███████████████${R}"
         printf '%s\n' "${SD}███████████████${R}"
-        printf '%s\n' "${SM}██${V}████${SM}███${V}████${SM}██${R}"
-        printf '%s\n' "${SM}██${V}████${SM}███${V}████${SM}██${R}"
-        printf '%s\n' "${SM}███${V}██${SM}█████${V}██${SM}███${R}"
+        printf '%s\n' "${SM}███${V}███${SM}███${V}███${SM}███${R}"
+        printf '%s\n' "${SM}███${V}███${SM}███${V}███${SM}███${R}"
+        printf '%s\n' "${SM}█████${V}█${SM}███${V}█${SM}█████${R}"
         printf '%s\n' "${SM}██████${V}███${SM}██████${R}"
         printf '%s\n' "${SD} █████████████${R}"
         printf '%s\n' "${SM}  ██${SD}█${SM}██${SD}█${SM}██${SD}█${SM}██${R}"
         ;;
     small)
+        # 13px wide. Eyes: SM:2+V:3+SM:3+V:3+SM:2=13 (wider bone border than
+        # before). Nose: two 1px nostril dots (SM:4+V:1+SM:3+V:1+SM:4=13).
         printf '%s\n' "${SL} ███████████${R}"
-        printf '%s\n' "${SM}█${V}███${SM}█████${V}███${SM}█${R}"
+        printf '%s\n' "${SM}██${V}███${SM}███${V}███${SM}██${R}"
+        printf '%s\n' "${SM}████${V}█${SM}███${V}█${SM}████${R}"
         printf '%s\n' "${SM}█${SD}█${SM}██${SD}█${SM}███${SD}█${SM}██${SD}█${SM}█${R}"
         ;;
 esac
